@@ -1,0 +1,45 @@
+# ─── Render configuration ─────────────────────────────────────────────────────
+#
+# Backend: Express / Node.js proxy for the Groq API
+#
+# How to deploy:
+#   1. Push this repo to GitHub.
+#   2. In Render → "New +" → "Web Service" → connect the repo.
+#   3. Render auto-detects this file and pre-fills the settings.
+#   4. Under "Environment" add the secret:
+#        GROQ_API_KEY  =  your_groq_key_from_console.groq.com
+#      Optionally also set:
+#        ALLOWED_ORIGIN       = https://<your-site>.netlify.app
+#        GROQ_CODEGEN_MODEL   = llama-3.3-70b-versatile
+#        GROQ_ANALYSIS_MODEL  = llama-3.3-70b-versatile
+#   5. Click "Create Web Service".
+#   6. Copy the service URL (https://<name>.onrender.com) and paste it as
+#        VITE_API_BASE_URL = https://<name>.onrender.com/api
+#      in your Netlify environment variables, then redeploy the frontend.
+# ──────────────────────────────────────────────────────────────────────────────
+
+services:
+  - type: web
+    name: voice-compiler-api
+    runtime: node
+    region: oregon          # change to frankfurt / singapore if your users are closer
+    plan: free              # upgrade to starter ($7/mo) to avoid cold-start spin-ups
+
+    # Render runs `buildCommand` once, then `startCommand` on every deploy/restart.
+    buildCommand: npm install --omit=dev
+    startCommand: node server/index.js
+
+    # Health-check so Render knows when the service is ready.
+    healthCheckPath: /api/health
+
+    # Non-secret environment variables — safe to commit.
+    # Secret vars (GROQ_API_KEY, ALLOWED_ORIGIN) must be added in the dashboard.
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 10000          # Render always exposes 10000 externally regardless
+      - key: GROQ_CODEGEN_MODEL
+        value: llama-3.3-70b-versatile
+      - key: GROQ_ANALYSIS_MODEL
+        value: llama-3.3-70b-versatile

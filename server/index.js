@@ -6,12 +6,38 @@ import { buildCodeGenPrompt, buildAnalysisPrompt } from "./prompts.js";
 const app = express();
 const PORT = process.env.PORT || 5174;
 
-const GROQ_API_KEY = process.env.GROQ_API_KEY;
-const GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions";
-const CODEGEN_MODEL = process.env.GROQ_CODEGEN_MODEL || "llama-3.3-70b-versatile";
-const ANALYSIS_MODEL = process.env.GROQ_ANALYSIS_MODEL || "llama-3.3-70b-versatile";
+const GROQ_API_KEY    = process.env.GROQ_API_KEY;
+const GROQ_API_URL    = "https://api.groq.com/openai/v1/chat/completions";
+const CODEGEN_MODEL   = process.env.GROQ_CODEGEN_MODEL  || "llama-3.3-70b-versatile";
+const ANALYSIS_MODEL  = process.env.GROQ_ANALYSIS_MODEL || "llama-3.3-70b-versatile";
 
-app.use(cors());
+/* ------------------------------------------------------------------ *
+ * CORS
+ *
+ * ALLOWED_ORIGIN is set in the Render dashboard to your Netlify URL,
+ * e.g. https://your-app.netlify.app
+ * In local dev it falls back to permissive so both the Vite proxy and
+ * direct curl calls work without any extra config.
+ * ------------------------------------------------------------------ */
+const ALLOWED_ORIGIN = process.env.ALLOWED_ORIGIN;
+
+const corsOptions = ALLOWED_ORIGIN
+  ? {
+      origin: (origin, cb) => {
+        // Allow the configured origin plus same-origin (no Origin header)
+        if (!origin || origin === ALLOWED_ORIGIN) {
+          cb(null, true);
+        } else {
+          cb(new Error(`CORS: origin ${origin} not allowed`));
+        }
+      },
+      methods: ["GET", "POST", "OPTIONS"],
+      allowedHeaders: ["Content-Type", "Authorization"],
+    }
+  : {}; // open in dev — Vite proxy is the gatekeeper locally
+
+app.use(cors(corsOptions));
+app.options("*", cors(corsOptions)); // pre-flight for all routes
 app.use(express.json({ limit: "256kb" }));
 
 /* ------------------------------------------------------------------ *

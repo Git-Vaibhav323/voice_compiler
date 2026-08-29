@@ -1,0 +1,49 @@
+# ─── Netlify configuration ────────────────────────────────────────────────────
+#
+# Frontend: Vite + React + Tailwind 4
+# Backend:  Express on Render  (set VITE_API_BASE_URL below)
+#
+# How to deploy:
+#   1. Push this repo to GitHub.
+#   2. In Netlify → "Add new site" → "Import from Git" → pick the repo.
+#   3. Build settings are auto-detected from this file; nothing to change.
+#   4. Under Site → Environment variables add:
+#        VITE_API_BASE_URL  =  https://<your-render-service>.onrender.com/api
+#   5. Trigger a deploy (or it runs automatically on push).
+# ──────────────────────────────────────────────────────────────────────────────
+
+[build]
+  # Only the frontend is built here; the Express server runs on Render.
+  command = "npm run build"
+  publish = "dist"
+
+  # Environment variables baked into the Vite bundle at build time.
+  # Override these in the Netlify UI → Site → Environment variables.
+  [build.environment]
+    NODE_VERSION       = "20"
+    # Set this to your Render backend URL once it is deployed, e.g.:
+    # VITE_API_BASE_URL = "https://voice-compiler-api.onrender.com/api"
+    # Leave it unset here so you're forced to add it in the Netlify dashboard
+    # (it must be specific to your Render service name).
+
+# ─── SPA fallback ─────────────────────────────────────────────────────────────
+# React Router uses the HTML5 History API, so all paths must serve index.html.
+[[redirects]]
+  from   = "/*"
+  to     = "/index.html"
+  status = 200
+
+# ─── Security headers ─────────────────────────────────────────────────────────
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Frame-Options        = "DENY"
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy        = "strict-origin-when-cross-origin"
+    Permissions-Policy     = "microphone=(self), camera=()"
+
+# ─── Cache static assets aggressively ─────────────────────────────────────────
+[[headers]]
+  for = "/assets/*"
+  [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"
