@@ -16,28 +16,41 @@ const ANALYSIS_MODEL  = process.env.GROQ_ANALYSIS_MODEL || "llama-3.3-70b-versat
  *
  * ALLOWED_ORIGIN is set in the Render dashboard to your Netlify URL,
  * e.g. https://your-app.netlify.app
- * In local dev it falls back to permissive so both the Vite proxy and
- * direct curl calls work without any extra config.
+ * Supports comma-separated list for multiple origins if needed.
+ * In local dev (no ALLOWED_ORIGIN set) all origins are permitted.
  * ------------------------------------------------------------------ */
 const ALLOWED_ORIGIN = process.env.ALLOWED_ORIGIN;
 
-const corsOptions = ALLOWED_ORIGIN
+// Build a Set of normalised allowed origins (trim whitespace, strip trailing /)
+const allowedOrigins = ALLOWED_ORIGIN
+  ? new Set(
+      ALLOWED_ORIGIN.split(",")
+        .map((o) => o.trim().replace(/\/$/, ""))
+        .filter(Boolean)
+    )
+  : null;
+
+const corsOptions = allowedOrigins
   ? {
       origin: (origin, cb) => {
-        // Allow the configured origin plus same-origin (no Origin header)
-        if (!origin || origin === ALLOWED_ORIGIN) {
+        // No Origin header = same-origin / server-to-server — always allow
+        if (!origin) return cb(null, true);
+        const normalised = origin.replace(/\/$/, "");
+        if (allowedOrigins.has(normalised)) {
           cb(null, true);
         } else {
+          console.warn(`[CORS] blocked origin: ${origin}`);
           cb(new Error(`CORS: origin ${origin} not allowed`));
         }
       },
       methods: ["GET", "POST", "OPTIONS"],
       allowedHeaders: ["Content-Type", "Authorization"],
+      credentials: false,
     }
-  : {}; // open in dev — Vite proxy is the gatekeeper locally
+  : { origin: "*" }; // open in dev
 
 app.use(cors(corsOptions));
-app.options("*", cors(corsOptions)); // pre-flight for all routes
+app.options("*", cors(corsOptions)); // handle pre-flight for all routes
 app.use(express.json({ limit: "256kb" }));
 
 /* ------------------------------------------------------------------ *
