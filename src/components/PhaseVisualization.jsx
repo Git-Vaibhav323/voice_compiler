@@ -25,7 +25,7 @@ const Waveform = () => (
       <span
         key={cls}
         className={`inline-block w-0.5 rounded-full ${cls}`}
-        style={{ background: "linear-gradient(180deg,#6366F1,#A855F7)", minHeight: 3 }}
+        style={{ background: "var(--accent)", minHeight: 3 }}
       />
     ))}
   </div>
@@ -94,9 +94,9 @@ export default function PhaseVisualization({ phases }) {
           <span
             className="font-code text-xs flex-shrink-0 w-7 h-7 rounded-lg flex items-center justify-center"
             style={{
-              background: "rgba(99,102,241,0.12)",
-              border: "1px solid rgba(99,102,241,0.2)",
-              color: "#a5b4fc",
+              background: "rgba(237,237,237,0.05)",
+              border: "1px solid var(--border-mid)",
+              color: "var(--text-muted)",
             }}
           >
             {number}
@@ -249,13 +249,13 @@ export default function PhaseVisualization({ phases }) {
             className="text-sm font-medium mb-2 flex items-center gap-2"
             style={{ color: "var(--text-secondary)" }}
           >
-            <FiDatabase className="w-4 h-4" style={{ color: "#a5b4fc" }} />
+            <FiDatabase className="w-4 h-4" style={{ color: "var(--text-muted)" }} />
             Symbol Table
           </h3>
           <div className="overflow-auto rounded-xl" style={{ border: "1px solid var(--border)" }}>
             <table className="min-w-full">
               <thead>
-                <tr style={{ backgroundColor: "rgba(99,102,241,0.07)", borderBottom: "1px solid var(--border)" }}>
+                <tr style={{ backgroundColor: "rgba(237,237,237,0.03)", borderBottom: "1px solid var(--border)" }}>
                   {["Name", "Type", "Scope"].map((h) => (
                     <th
                       key={h}
@@ -283,9 +283,9 @@ export default function PhaseVisualization({ phases }) {
                       <span
                         className="font-code text-xs px-2.5 py-0.5 rounded-full"
                         style={{
-                          background: "rgba(99,102,241,0.12)",
-                          border: "1px solid rgba(99,102,241,0.2)",
-                          color: "#a5b4fc",
+                          background: "rgba(212,165,116,0.10)",
+                          border: "1px solid rgba(212,165,116,0.22)",
+                          color: "var(--accent)",
                         }}
                       >
                         {sym.type}

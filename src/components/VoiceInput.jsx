@@ -46,23 +46,24 @@ const VoiceInput = ({ onGenerate, generating, generationError, backend }) => {
   };
 
   const backendReady = backend.online && backend.hasApiKey;
+  const hasText = request.trim().length > 0;
 
   return (
     <div
-      className="rounded-2xl p-6 md:p-8 w-full"
+      className="w-full rounded-2xl p-6 md:p-8"
       style={{
         backgroundColor: "var(--bg-elevated)",
         border: "1px solid var(--border)",
       }}
     >
-      {/* ── Backend warning ─────────────────────────────────────────── */}
+      {/* ── Backend warning ────────────────────────────────────────── */}
       {!backendReady && (
         <div
           className="flex items-start gap-3 rounded-xl px-4 py-3 mb-6 text-sm"
           style={{
-            background: "rgba(234,179,8,0.07)",
-            border: "1px solid rgba(234,179,8,0.2)",
-            color: "rgba(253,224,71,0.8)",
+            background: "rgba(212,165,116,0.07)",
+            border: "1px solid rgba(212,165,116,0.18)",
+            color: "rgba(212,165,116,0.82)",
           }}
         >
           <FiAlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
@@ -74,70 +75,63 @@ const VoiceInput = ({ onGenerate, generating, generationError, backend }) => {
         </div>
       )}
 
-      {/* ── Main input row ───────────────────────────────────────────── */}
-      <div className="flex flex-col sm:flex-row gap-4 items-stretch">
+      {/* ── Core: mic + input + generate ─────────────────────────── */}
+      <div className="flex items-center gap-5 md:gap-6">
 
-        {/* Mic button — hero interaction */}
-        <div className="flex justify-center sm:justify-start">
-          <div className="relative flex items-center justify-center">
-            {/* Pulse rings */}
-            {listening && (
-              <>
-                <span
-                  className="mic-ring-1 absolute rounded-full"
-                  style={{
-                    width: 64, height: 64,
-                    background: "rgba(99,102,241,0.3)",
-                  }}
-                />
-                <span
-                  className="mic-ring-2 absolute rounded-full"
-                  style={{
-                    width: 64, height: 64,
-                    background: "rgba(168,85,247,0.2)",
-                  }}
-                />
-                <span
-                  className="mic-ring-3 absolute rounded-full"
-                  style={{
-                    width: 64, height: 64,
-                    background: "rgba(99,102,241,0.12)",
-                  }}
-                />
-              </>
-            )}
-            <button
-              onClick={toggle}
-              disabled={!supported}
-              title={
-                supported
-                  ? listening ? "Stop listening" : "Start listening"
-                  : "Voice input not supported in this browser"
-              }
-              aria-label={listening ? "Stop voice recording" : "Start voice recording"}
-              className="relative z-10 w-16 h-16 rounded-full flex items-center justify-center transition-all duration-200 disabled:opacity-40 disabled:cursor-not-allowed flex-shrink-0 cursor-pointer"
-              style={{
-                background: listening
-                  ? "linear-gradient(135deg, #6366F1, #A855F7)"
-                  : "rgba(99,102,241,0.12)",
-                border: listening
-                  ? "none"
-                  : "1px solid rgba(99,102,241,0.3)",
-                boxShadow: listening
-                  ? "0 0 32px rgba(99,102,241,0.45)"
-                  : "none",
-              }}
-            >
-              {listening
-                ? <FiMicOff className="w-6 h-6 text-white" />
-                : <FiMic className="w-6 h-6" style={{ color: "#a5b4fc" }} />
-              }
-            </button>
-          </div>
+        {/* Mic — the single focal element */}
+        <div className="relative flex-shrink-0 flex items-center justify-center">
+          {/* Pulse rings — teal when recording */}
+          {listening && (
+            <>
+              <span
+                className="mic-ring-1 absolute rounded-full"
+                style={{ width: 72, height: 72, background: "var(--teal-dim)" }}
+              />
+              <span
+                className="mic-ring-2 absolute rounded-full"
+                style={{ width: 72, height: 72, background: "var(--teal-glow)" }}
+              />
+              <span
+                className="mic-ring-3 absolute rounded-full"
+                style={{ width: 72, height: 72, background: "rgba(94,168,160,0.05)" }}
+              />
+            </>
+          )}
+
+          <button
+            onClick={toggle}
+            disabled={!supported}
+            title={
+              supported
+                ? listening ? "Stop listening" : "Start listening"
+                : "Voice input not supported in this browser"
+            }
+            aria-label={listening ? "Stop voice recording" : "Start voice recording"}
+            className="relative z-10 w-[72px] h-[72px] rounded-full flex items-center justify-center transition-all duration-200 disabled:opacity-35 disabled:cursor-not-allowed cursor-pointer"
+            style={
+              listening
+                ? {
+                    background: "var(--teal)",
+                    border: "none",
+                    boxShadow: "0 0 0 1px rgba(94,168,160,0.4), 0 4px 24px rgba(94,168,160,0.28)",
+                  }
+                : {
+                    background: "rgba(237,237,237,0.04)",
+                    border: "1px solid var(--border-mid)",
+                    boxShadow: "none",
+                  }
+            }
+          >
+            {listening
+              ? <FiMicOff className="w-6 h-6" style={{ color: "#0A0A0B" }} />
+              : <FiMic className="w-6 h-6" style={{ color: "var(--text-secondary)" }} />
+            }
+          </button>
         </div>
 
-        {/* Text field + generate */}
-        <div className="flex-1 flex flex-col gap-3">
+        {/* Right side: input + generate */}
+        <div className="flex-1 min-w-0">
+          {/* Input — borderless box, hairline bottom rule */}
           <div className="relative">
             <input
               type="text"
@@ -146,72 +140,83 @@ const VoiceInput = ({ onGenerate, generating, generationError, backend }) => {
               onKeyDown={(e) => e.key === "Enter" && handleGenerate()}
               placeholder={
                 supported
-                  ? "Tap the mic and speak, or type your request…"
-                  : "Type your request here (voice not supported in this browser)"
+                  ? "Tap the mic, or type your request…"
+                  : "Type your request here…"
               }
-              className="w-full py-4 pl-5 pr-12 rounded-xl text-sm md:text-base outline-none transition-all"
+              className="w-full py-3 pr-8 outline-none bg-transparent text-base"
               style={{
-                backgroundColor: "var(--bg-raised)",
-                border: listening
-                  ? "1px solid rgba(99,102,241,0.5)"
+                borderBottom: listening
+                  ? "1px solid var(--teal)"
                   : "1px solid var(--border-mid)",
                 color: "var(--text-primary)",
-                caretColor: "#a5b4fc",
+                caretColor: "var(--accent)",
+                transition: "border-color 0.2s ease",
               }}
             />
             {request && (
               <button
                 onClick={handleClear}
                 title="Clear"
-                className="absolute right-3 top-1/2 -translate-y-1/2 p-1.5 rounded-lg transition-colors cursor-pointer"
+                className="absolute right-0 top-1/2 -translate-y-1/2 p-1 cursor-pointer"
                 style={{ color: "var(--text-muted)" }}
               >
-                <FiX className="w-4 h-4" />
+                <FiX className="w-3.5 h-3.5" />
               </button>
             )}
           </div>
 
-          <button
-            onClick={handleGenerate}
-            disabled={generating || !request.trim() || !backendReady}
-            className="btn-primary self-end"
-          >
-            {generating ? (
-              <FiLoader className="w-4 h-4 animate-spin" />
+          {/* Generate — dimmed until text is present */}
+          <div className="flex justify-end mt-4">
+            {hasText && backendReady ? (
+              <button
+                onClick={handleGenerate}
+                disabled={generating}
+                className="btn-primary"
+              >
+                {generating
+                  ? <FiLoader className="w-3.5 h-3.5 animate-spin" />
+                  : <FiArrowRight className="w-3.5 h-3.5 btn-arrow" />
+                }
+                {generating ? "Writing…" : "Generate"}
+              </button>
             ) : (
-              <FiArrowRight className="w-4 h-4 btn-arrow" />
+              <span className="btn-primary-dim">
+                <FiArrowRight className="w-3.5 h-3.5" />
+                Generate
+              </span>
             )}
-            {generating ? "Writing…" : "Generate"}
-          </button>
+          </div>
         </div>
       </div>
 
-      {/* ── Live transcript feedback ──────────────────────────────────── */}
+      {/* ── Live transcript indicator ─────────────────────────────── */}
       {listening && (
         <div
-          className="flex items-center gap-3 mt-4 rounded-xl px-4 py-3 text-sm"
-          style={{
-            background: "rgba(99,102,241,0.08)",
-            border: "1px solid rgba(99,102,241,0.2)",
-            color: "#a5b4fc",
-          }}
+          className="flex items-center gap-3 mt-5 text-sm"
+          style={{ color: "var(--teal)" }}
         >
-          <span className="relative flex h-2 w-2 flex-shrink-0">
-            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-indigo-400 opacity-75" />
-            <span className="relative inline-flex h-2 w-2 rounded-full bg-indigo-500" />
+          <span className="relative flex h-1.5 w-1.5 flex-shrink-0">
+            <span
+              className="animate-ping absolute inline-flex h-full w-full rounded-full opacity-75"
+              style={{ background: "var(--teal)" }}
+            />
+            <span
+              className="relative inline-flex h-1.5 w-1.5 rounded-full"
+              style={{ background: "var(--teal)" }}
+            />
           </span>
           {interim ? `Hearing: ${interim}` : "Listening — start speaking…"}
         </div>
       )}
 
-      {/* ── Errors ───────────────────────────────────────────────────── */}
+      {/* ── Errors ───────────────────────────────────────────────── */}
       {(speechError || generationError) && (
         <div
           className="flex items-start gap-3 mt-4 rounded-xl px-4 py-3 text-sm"
           style={{
-            background: "rgba(239,68,68,0.08)",
-            border: "1px solid rgba(239,68,68,0.2)",
-            color: "rgba(252,165,165,0.9)",
+            background: "rgba(239,68,68,0.07)",
+            border: "1px solid rgba(239,68,68,0.16)",
+            color: "rgba(252,165,165,0.85)",
           }}
         >
           <FiAlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
@@ -221,31 +226,33 @@ const VoiceInput = ({ onGenerate, generating, generationError, backend }) => {
 
       {!supported && (
         <p className="mt-3 text-xs" style={{ color: "var(--text-muted)" }}>
-          Voice input needs the Web Speech API — available in Chrome, Edge and Safari.
+          Voice input needs Chrome, Edge, or Safari.
         </p>
       )}
 
-      {/* ── Suggestion chips ─────────────────────────────────────────── */}
+      {/* ── Suggestion chips ──────────────────────────────────────── */}
       <div className="mt-5 pt-4" style={{ borderTop: "1px solid var(--border)" }}>
-        <p className="text-xs mb-3" style={{ color: "var(--text-muted)" }}>Try saying:</p>
-        <div className="flex flex-wrap gap-2">
+        <p className="text-xs mb-2.5" style={{ color: "var(--text-muted)" }}>
+          Try saying:
+        </p>
+        <div className="flex flex-wrap gap-1.5">
           {SUGGESTIONS.map((s) => (
             <button
               key={s}
               onClick={() => setRequest(s)}
-              className="text-xs px-3 py-1.5 rounded-full transition-all cursor-pointer"
+              className="text-xs px-3 py-1.5 rounded-full cursor-pointer transition-all"
               style={{
-                background: "rgba(99,102,241,0.07)",
-                border: "1px solid rgba(99,102,241,0.2)",
-                color: "var(--text-secondary)",
+                background: "rgba(237,237,237,0.04)",
+                border: "1px solid var(--border-mid)",
+                color: "var(--text-muted)",
               }}
               onMouseEnter={(e) => {
-                e.currentTarget.style.background = "rgba(99,102,241,0.15)";
-                e.currentTarget.style.color = "#fff";
+                e.currentTarget.style.borderColor = "rgba(237,237,237,0.18)";
+                e.currentTarget.style.color = "var(--text-secondary)";
               }}
               onMouseLeave={(e) => {
-                e.currentTarget.style.background = "rgba(99,102,241,0.07)";
-                e.currentTarget.style.color = "var(--text-secondary)";
+                e.currentTarget.style.borderColor = "var(--border-mid)";
+                e.currentTarget.style.color = "var(--text-muted)";
               }}
             >
               {s}

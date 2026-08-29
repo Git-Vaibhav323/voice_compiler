@@ -21,29 +21,29 @@ const SpeakButton = ({ active, speaking, supported, onClick, label }) => {
       style={
         isActive
           ? {
-              background: "linear-gradient(135deg,#6366F1,#A855F7)",
+              background: "var(--accent)",
               border: "none",
-              color: "#fff",
-              boxShadow: "0 2px 12px rgba(99,102,241,0.4)",
+              color: "#0A0A0B",
+              boxShadow: "0 2px 10px rgba(212,165,116,0.28)",
             }
           : {
-              background: "rgba(255,255,255,0.05)",
+              background: "rgba(237,237,237,0.04)",
               border: "1px solid var(--border-mid)",
-              color: "var(--text-secondary)",
+              color: "var(--text-muted)",
             }
       }
       onMouseEnter={(e) => {
         if (!isActive) {
-          e.currentTarget.style.borderColor = "rgba(99,102,241,0.4)";
-          e.currentTarget.style.color = "#a5b4fc";
-          e.currentTarget.style.background = "rgba(99,102,241,0.1)";
+          e.currentTarget.style.borderColor = "rgba(237,237,237,0.18)";
+          e.currentTarget.style.color = "var(--text-secondary)";
+          e.currentTarget.style.background = "rgba(237,237,237,0.06)";
         }
       }}
       onMouseLeave={(e) => {
         if (!isActive) {
           e.currentTarget.style.borderColor = "var(--border-mid)";
-          e.currentTarget.style.color = "var(--text-secondary)";
-          e.currentTarget.style.background = "rgba(255,255,255,0.05)";
+          e.currentTarget.style.color = "var(--text-muted)";
+          e.currentTarget.style.background = "rgba(237,237,237,0.04)";
         }
       }}
     >

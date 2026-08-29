@@ -73,25 +73,25 @@ const VOICE_STEPS = [
 const NOTES = [
   {
     icon: FiMic,
-    accentColor: "rgba(99,102,241,0.15)",
-    borderColor: "rgba(99,102,241,0.25)",
-    textColor: "#a5b4fc",
+    accentColor: "rgba(212,165,116,0.07)",
+    borderColor: "rgba(212,165,116,0.18)",
+    textColor: "var(--accent)",
     title: "Browser support",
     body: "Speech recognition needs Chrome, Edge, or Safari. Firefox doesn't implement it, so the mic is disabled there — type your request instead.",
   },
   {
     icon: FiVolume2,
-    accentColor: "rgba(168,85,247,0.12)",
-    borderColor: "rgba(168,85,247,0.25)",
-    textColor: "#d8b4fe",
+    accentColor: "rgba(94,168,160,0.07)",
+    borderColor: "rgba(94,168,160,0.18)",
+    textColor: "var(--teal)",
     title: "Reading aloud",
     body: "Speech synthesis works in every current browser. Use the speed slider above the phases to control how fast the narration is spoken.",
   },
   {
     icon: FiServer,
-    accentColor: "rgba(16,185,129,0.08)",
-    borderColor: "rgba(16,185,129,0.2)",
-    textColor: "#6ee7b7",
+    accentColor: "rgba(237,237,237,0.03)",
+    borderColor: "var(--border-mid)",
+    textColor: "var(--text-secondary)",
     title: "Offline fallback",
     body: "If the backend is not running or has no API key, a built-in parser analyses your code locally. You lose AI code generation, not the phase visualization.",
   },
@@ -105,11 +105,15 @@ const HowItWorks = () => (
       className="flex items-center justify-between px-6 md:px-10 py-5"
       style={{ borderBottom: "1px solid var(--border)" }}
     >
-      <Link to="/" className="flex items-center gap-3">
-        <div className="w-9 h-9 rounded-xl flex items-center justify-center accent-bg shadow-lg shadow-indigo-500/25">
-          <FiMic className="w-4 h-4 text-white" />
-        </div>
-        <span className="font-semibold text-white tracking-tight text-base hidden sm:block">Voice Compiler</span>
+      <Link to="/" className="flex items-center gap-2.5">
+        <img
+          src="/favicon/favicon-32x32.png"
+          alt="Voice Compiler logo"
+          width={28}
+          height={28}
+          className="rounded-lg flex-shrink-0"
+        />
+        <span className="font-semibold tracking-tight text-sm hidden sm:block" style={{ color: "var(--text-primary)" }}>Voice Compiler</span>
       </Link>
       <Link to="/" className="btn-ghost text-sm py-2 px-3">
         <FiArrowLeft className="w-4 h-4" />
@@ -125,8 +129,8 @@ const HowItWorks = () => (
           <FiBookOpen className="w-3 h-3" />
           Guide
         </div>
-        <h1 className="text-display text-white mb-4">How Compiler Phases Work</h1>
-        <p className="text-base max-w-xl mx-auto" style={{ color: "var(--text-secondary)" }}>
+        <h1 className="text-display mb-4" style={{ color: "#F5F5F7" }}>How Compiler Phases Work</h1>
+        <p className="text-base max-w-[52ch] mx-auto" style={{ color: "var(--text-secondary)" }}>
           Understand each step of the compilation process, from source code to executable machine instructions.
         </p>
       </div>
@@ -147,9 +151,9 @@ const HowItWorks = () => (
               <div className="flex items-center gap-3 mb-3">
                 <div
                   className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0"
-                  style={{ background: "rgba(99,102,241,0.12)", border: "1px solid rgba(99,102,241,0.2)" }}
+                  style={{ background: "rgba(237,237,237,0.05)", border: "1px solid var(--border-mid)" }}
                 >
-                  <Icon className="w-4 h-4" style={{ color: "#a5b4fc" }} />
+                  <Icon className="w-4 h-4" style={{ color: "var(--text-muted)" }} />
                 </div>
                 <div>
                   <div className="font-code text-xs" style={{ color: "var(--text-muted)" }}>Phase {i + 1}</div>
@@ -171,9 +175,9 @@ const HowItWorks = () => (
         <div className="flex items-center gap-3 mb-6">
           <div
             className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0"
-            style={{ background: "rgba(99,102,241,0.12)", border: "1px solid rgba(99,102,241,0.2)" }}
+            style={{ background: "rgba(237,237,237,0.05)", border: "1px solid var(--border-mid)" }}
           >
-            <FiMic className="w-4 h-4" style={{ color: "#a5b4fc" }} />
+            <FiMic className="w-4 h-4" style={{ color: "var(--text-muted)" }} />
           </div>
           <h2 className="font-semibold text-lg" style={{ color: "var(--text-primary)" }}>Using Your Voice</h2>
         </div>
@@ -184,7 +188,7 @@ const HowItWorks = () => (
               <div className="flex items-center gap-2 mb-2">
                 <span
                   className="font-code text-xs w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0"
-                  style={{ background: "rgba(99,102,241,0.15)", border: "1px solid rgba(99,102,241,0.3)", color: "#a5b4fc" }}
+                  style={{ background: "rgba(237,237,237,0.05)", border: "1px solid var(--border-mid)", color: "var(--text-muted)" }}
                 >
                   {step}
                 </span>
@@ -220,9 +224,9 @@ const HowItWorks = () => (
         <div className="flex items-center gap-3 mb-4">
           <div
             className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0"
-            style={{ background: "rgba(99,102,241,0.12)", border: "1px solid rgba(99,102,241,0.2)" }}
+            style={{ background: "rgba(237,237,237,0.05)", border: "1px solid var(--border-mid)" }}
           >
-            <FiBookOpen className="w-4 h-4" style={{ color: "#a5b4fc" }} />
+            <FiBookOpen className="w-4 h-4" style={{ color: "var(--text-muted)" }} />
           </div>
           <h2 className="font-semibold text-lg" style={{ color: "var(--text-primary)" }}>About This Tool</h2>
         </div>
