@@ -7,55 +7,50 @@ import SpeakButton from "./SpeakButton";
 import { getPhaseNarration } from "../services/narration";
 import { useSpeech } from "../hooks/useSpeech";
 import {
-  FiCheckCircle,
+  FiCode,
   FiDatabase,
   FiInfo,
-  FiCode,
   FiZap,
   FiCpu,
+  FiCheckCircle,
   FiVolumeX,
 } from "react-icons/fi";
 
-/**
- * Tailwind cannot see interpolated class names such as `bg-${color}-100`, so
- * the colour variants are written out in full here.
- */
-const COLOR_STYLES = {
-  gray: { badge: "bg-gray-100 text-gray-800", icon: "text-gray-500", ring: "ring-gray-300" },
-  blue: { badge: "bg-blue-100 text-blue-800", icon: "text-blue-500", ring: "ring-blue-300" },
-  indigo: { badge: "bg-indigo-100 text-indigo-800", icon: "text-indigo-500", ring: "ring-indigo-300" },
-  purple: { badge: "bg-purple-100 text-purple-800", icon: "text-purple-500", ring: "ring-purple-300" },
-  amber: { badge: "bg-amber-100 text-amber-800", icon: "text-amber-500", ring: "ring-amber-300" },
-  green: { badge: "bg-green-100 text-green-800", icon: "text-green-500", ring: "ring-green-300" },
-};
+/* ─── Waveform indicator shown on the active/speaking card ─────────── */
+const Waveform = () => (
+  <div className="flex items-end gap-0.5 h-5" aria-hidden="true">
+    {[
+      "wave-bar-1", "wave-bar-2", "wave-bar-3", "wave-bar-4", "wave-bar-5",
+    ].map((cls) => (
+      <span
+        key={cls}
+        className={`inline-block w-0.5 rounded-full ${cls}`}
+        style={{ background: "linear-gradient(180deg,#6366F1,#A855F7)", minHeight: 3 }}
+      />
+    ))}
+  </div>
+);
 
 export default function PhaseVisualization({ phases }) {
-  const { speak, stop, speaking, activeId, supported, rate, setRate } = useSpeech();
+  const { speak, stop, speaking, activeId, supported, rate, setRate } =
+    useSpeech();
 
-  if (!phases) {
-    return (
-      <div className="mt-6 p-4 md:p-6 bg-blue-50 border border-blue-200 rounded-lg text-blue-800 flex items-center justify-center">
-        <FiInfo className="mr-2 flex-shrink-0" />
-        <p>Enter code and click "Analyze" to see the compiler phases.</p>
-      </div>
-    );
-  }
+  if (!phases) return null;
 
-  // Derive assembly from the optimised TAC if the analysis did not supply any.
+  /* Derive assembly from optimised TAC when the analysis didn't supply any. */
   if (
     !phases.assemblyCode ||
     !Array.isArray(phases.assemblyCode) ||
     phases.assemblyCode.length === 0
   ) {
     const assemblyCode = [];
-
     if (phases.optimizedCode?.length) {
       phases.optimizedCode.forEach((line) => {
         if (!line.includes("=")) return;
-
         const [leftSide, rightSide] = line.split("=").map((p) => p.trim());
-        const binary = ["+", "-", "*", "/"].find((op) => rightSide.includes(op));
-
+        const binary = ["+", "-", "*", "/"].find((op) =>
+          rightSide.includes(op)
+        );
         if (binary) {
           const mnemonic = { "+": "ADD", "-": "SUB", "*": "MUL", "/": "DIV" }[binary];
           const [a, b] = rightSide.split(binary).map((p) => p.trim());
@@ -67,7 +62,6 @@ export default function PhaseVisualization({ phases }) {
           assemblyCode.push(`STORE ${leftSide}, R1`);
         }
       });
-
       phases.assemblyCode = assemblyCode;
     }
   }
@@ -76,14 +70,8 @@ export default function PhaseVisualization({ phases }) {
     speak(getPhaseNarration(phaseKey, phases), phaseKey);
   };
 
-  /**
-   * One phase card. The whole card is clickable, which is what makes
-   * "click a phase and it reads aloud" work. Clicks landing on interactive
-   * children (the AST canvas, buttons, links) are ignored so those keep
-   * behaving normally.
-   */
-  const PhaseCard = ({ phaseKey, number, title, icon: Icon, color, children }) => {
-    const styles = COLOR_STYLES[color] || COLOR_STYLES.gray;
+  /* ── Phase card ──────────────────────────────────────────────────── */
+  const PhaseCard = ({ phaseKey, number, title, icon: Icon, children }) => {
     const isActive = activeId === phaseKey && speaking;
 
     const handleCardClick = (event) => {
@@ -97,49 +85,80 @@ export default function PhaseVisualization({ phases }) {
     return (
       <section
         onClick={handleCardClick}
-        className={`bg-white p-4 md:p-6 rounded-lg shadow-sm border transition-all cursor-pointer
-          ${
-            isActive
-              ? `border-transparent ring-2 ${styles.ring} shadow-md`
-              : "border-gray-100 hover:border-gray-300 hover:shadow"
-          }`}
+        className={`phase-card p-5 md:p-6${isActive ? " active" : ""}`}
+        aria-label={`${title} phase`}
       >
-        <h2 className="text-lg md:text-xl font-semibold mb-4 flex items-center gap-2">
+        {/* Card header */}
+        <div className="flex items-center gap-3 mb-5">
+          {/* Number badge */}
           <span
-            className={`${styles.badge} w-7 h-7 rounded-full inline-flex items-center justify-center text-sm font-bold flex-shrink-0`}
+            className="font-code text-xs flex-shrink-0 w-7 h-7 rounded-lg flex items-center justify-center"
+            style={{
+              background: "rgba(99,102,241,0.12)",
+              border: "1px solid rgba(99,102,241,0.2)",
+              color: "#a5b4fc",
+            }}
           >
             {number}
           </span>
-          <span className="mr-auto">{title}</span>
 
-          <SpeakButton
-            active={activeId === phaseKey}
-            speaking={speaking}
-            supported={supported}
-            onClick={() => handleSpeak(phaseKey)}
-            label={title}
-          />
+          <h2
+            className="font-semibold text-base md:text-lg flex-1 tracking-tight"
+            style={{ color: "var(--text-primary)" }}
+          >
+            {title}
+          </h2>
 
-          {Icon && <Icon className={`${styles.icon} flex-shrink-0 hidden sm:block`} />}
-        </h2>
+          {/* Waveform or icon */}
+          <div className="flex items-center gap-3 flex-shrink-0">
+            {isActive ? (
+              <Waveform />
+            ) : (
+              Icon && (
+                <Icon
+                  className="w-4 h-4 hidden sm:block"
+                  style={{ color: "var(--text-muted)" }}
+                />
+              )
+            )}
 
-        {children}
+            <SpeakButton
+              active={activeId === phaseKey}
+              speaking={speaking}
+              supported={supported}
+              onClick={() => handleSpeak(phaseKey)}
+              label={title}
+            />
+          </div>
+        </div>
+
+        {/* Card content */}
+        <div>{children}</div>
       </section>
     );
   };
 
   return (
-    <div className="mt-6 space-y-6">
-      {/* Narration controls */}
+    <div className="space-y-4">
+      {/* ── Narration controls ───────────────────────────────────────── */}
       {supported ? (
-        <div className="flex flex-col sm:flex-row sm:items-center gap-3 bg-slate-50 border border-slate-200 rounded-lg px-4 py-3">
-          <p className="text-xs md:text-sm text-slate-600 mr-auto">
-            Click any phase below, or press its Listen button, to hear it
-            explained.
+        <div
+          className="flex flex-col sm:flex-row sm:items-center gap-4 rounded-xl px-5 py-3"
+          style={{
+            backgroundColor: "var(--bg-elevated)",
+            border: "1px solid var(--border)",
+          }}
+        >
+          <p className="text-sm flex-1" style={{ color: "var(--text-secondary)" }}>
+            Click any phase card to hear it explained — or use its Listen button.
           </p>
 
-          <div className="flex items-center gap-2">
-            <label htmlFor="speech-rate" className="text-xs text-slate-500">
+          <div className="flex items-center gap-3">
+            <label
+              htmlFor="speech-rate"
+              className="text-xs flex-shrink-0"
+              style={{ color: "var(--text-muted)" }}
+            >
               Speed
             </label>
             <input
@@ -150,113 +169,130 @@ export default function PhaseVisualization({ phases }) {
               step="0.1"
               value={rate}
               onChange={(e) => setRate(Number(e.target.value))}
-              className="w-24 cursor-pointer accent-blue-600"
+              className="w-24 cursor-pointer"
             />
-            <span className="text-xs text-slate-500 w-8">{rate.toFixed(1)}x</span>
-          </div>
-
-          {speaking && (
-            <button
-              onClick={stop}
-              className="text-xs font-medium bg-rose-500 hover:bg-rose-600 text-white px-3 py-1.5 rounded-full transition-colors cursor-pointer"
+            <span
+              className="font-code text-xs w-8"
+              style={{ color: "var(--text-muted)" }}
             >
-              Stop narration
-            </button>
-          )}
+              {rate.toFixed(1)}×
+            </span>
+
+            {speaking && (
+              <button
+                onClick={stop}
+                className="text-xs font-medium px-3 py-1.5 rounded-lg transition-colors cursor-pointer flex-shrink-0"
+                style={{
+                  background: "rgba(239,68,68,0.12)",
+                  border: "1px solid rgba(239,68,68,0.25)",
+                  color: "rgba(252,165,165,0.9)",
+                }}
+              >
+                Stop
+              </button>
+            )}
+          </div>
         </div>
       ) : (
-        <div className="flex items-center bg-amber-50 border border-amber-200 text-amber-800 px-4 py-3 rounded-lg">
-          <FiVolumeX className="w-4 h-4 mr-2 flex-shrink-0" />
-          <p className="text-xs md:text-sm">
-            This browser does not support speech synthesis, so phases cannot be
-            read aloud.
-          </p>
+        <div
+          className="flex items-center gap-3 rounded-xl px-4 py-3 text-sm"
+          style={{
+            background: "rgba(234,179,8,0.07)",
+            border: "1px solid rgba(234,179,8,0.2)",
+            color: "rgba(253,224,71,0.8)",
+          }}
+        >
+          <FiVolumeX className="w-4 h-4 flex-shrink-0" />
+          This browser does not support speech synthesis — phases cannot be read aloud.
         </div>
       )}
 
-      <PhaseCard
-        phaseKey="lexical"
-        number="1"
-        title="Lexical Analysis"
-        icon={FiCode}
-        color="gray"
-      >
+      {/* ── Phase 1 — Lexical ─────────────────────────────────────────── */}
+      <PhaseCard phaseKey="lexical" number="1" title="Lexical Analysis" icon={FiCode}>
         <TokenTable tokens={phases.tokens} />
       </PhaseCard>
 
-      <PhaseCard
-        phaseKey="syntax"
-        number="2"
-        title="Syntax Analysis"
-        icon={FiCode}
-        color="blue"
-      >
+      {/* ── Phase 2 — Syntax ──────────────────────────────────────────── */}
+      <PhaseCard phaseKey="syntax" number="2" title="Syntax Analysis" icon={FiCode}>
         <ASTVisualization astTree={phases.treeData} astString={phases.ast} />
       </PhaseCard>
 
-      <PhaseCard
-        phaseKey="semantic"
-        number="3"
-        title="Semantic Analysis"
-        icon={FiDatabase}
-        color="indigo"
-      >
+      {/* ── Phase 3 — Semantic ────────────────────────────────────────── */}
+      <PhaseCard phaseKey="semantic" number="3" title="Semantic Analysis" icon={FiDatabase}>
+        {/* Type checking */}
         <div className="mb-5">
-          <h3 className="font-medium mb-2 text-gray-700 flex items-center">
-            <FiCheckCircle className="h-5 w-5 mr-2 text-green-500" />
-            Type Checking:
+          <h3
+            className="text-sm font-medium mb-2 flex items-center gap-2"
+            style={{ color: "var(--text-secondary)" }}
+          >
+            <FiCheckCircle className="w-4 h-4" style={{ color: "#4ade80" }} />
+            Type Checking
           </h3>
-          <div className="md:ml-7 bg-green-50 p-3 rounded-md border border-green-200">
-            <p className="text-sm text-green-800">
-              {phases.semanticAnalysis?.typeChecking === "success" ? (
-                <span className="font-medium">
-                  All expressions are well-typed. No type errors detected.
-                </span>
-              ) : (
-                phases.semanticAnalysis?.typeChecking ||
-                "No type checking information available"
-              )}
-            </p>
+          <div
+            className="rounded-xl px-4 py-3 text-sm"
+            style={{
+              background: "rgba(74,222,128,0.05)",
+              border: "1px solid rgba(74,222,128,0.15)",
+              color: "rgba(134,239,172,0.9)",
+            }}
+          >
+            {phases.semanticAnalysis?.typeChecking === "success"
+              ? "All expressions are well-typed. No type errors detected."
+              : phases.semanticAnalysis?.typeChecking ||
+                "No type checking information available."}
           </div>
         </div>
 
+        {/* Symbol table */}
         <div>
-          <h3 className="font-medium mb-2 text-gray-700 flex items-center">
-            <FiDatabase className="h-5 w-5 mr-2 text-blue-500" />
-            Symbol Table:
+          <h3
+            className="text-sm font-medium mb-2 flex items-center gap-2"
+            style={{ color: "var(--text-secondary)" }}
+          >
+            <FiDatabase className="w-4 h-4" style={{ color: "#a5b4fc" }} />
+            Symbol Table
           </h3>
-
-          <div className="md:ml-7 overflow-auto">
-            <table className="min-w-full divide-y divide-gray-200 border border-gray-200 rounded-lg overflow-hidden">
-              <thead className="bg-blue-50">
-                <tr>
-                  {["Name", "Type", "Scope"].map((heading) => (
+          <div className="overflow-auto rounded-xl" style={{ border: "1px solid var(--border)" }}>
+            <table className="min-w-full">
+              <thead>
+                <tr style={{ backgroundColor: "rgba(99,102,241,0.07)", borderBottom: "1px solid var(--border)" }}>
+                  {["Name", "Type", "Scope"].map((h) => (
                     <th
-                      key={heading}
-                      scope="col"
-                      className="px-4 py-3 text-left text-xs font-medium text-blue-800 uppercase tracking-wider"
+                      key={h}
+                      className="px-4 py-3 text-left font-code text-xs tracking-widest"
+                      style={{ color: "var(--text-muted)" }}
                     >
-                      {heading}
+                      {h.toUpperCase()}
                     </th>
                   ))}
                 </tr>
               </thead>
-              <tbody className="bg-white divide-y divide-gray-200">
-                {phases.semanticAnalysis?.symbolTable?.map((symbol, index) => (
+              <tbody>
+                {phases.semanticAnalysis?.symbolTable?.map((sym, i) => (
                   <tr
-                    key={`${symbol.name}-${symbol.scope}-${index}`}
-                    className={index % 2 === 0 ? "bg-white" : "bg-gray-50"}
+                    key={`${sym.name}-${sym.scope}-${i}`}
+                    style={{
+                      backgroundColor: i % 2 === 0 ? "transparent" : "rgba(255,255,255,0.02)",
+                      borderBottom: "1px solid var(--border)",
+                    }}
                   >
-                    <td className="px-4 py-3 text-sm font-medium text-gray-900">
-                      {symbol.name}
+                    <td className="px-4 py-3 font-code text-sm" style={{ color: "var(--text-primary)" }}>
+                      {sym.name}
                     </td>
-                    <td className="px-4 py-3 text-sm text-gray-700">
-                      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-indigo-100 text-indigo-800">
-                        {symbol.type}
+                    <td className="px-4 py-3">
+                      <span
+                        className="font-code text-xs px-2.5 py-0.5 rounded-full"
+                        style={{
+                          background: "rgba(99,102,241,0.12)",
+                          border: "1px solid rgba(99,102,241,0.2)",
+                          color: "#a5b4fc",
+                        }}
+                      >
+                        {sym.type}
                       </span>
                     </td>
-                    <td className="px-4 py-3 text-sm text-gray-500">
-                      {symbol.scope}
+                    <td className="px-4 py-3 text-sm" style={{ color: "var(--text-secondary)" }}>
+                      {sym.scope}
                     </td>
                   </tr>
                 ))}
@@ -264,7 +300,8 @@ export default function PhaseVisualization({ phases }) {
                   <tr>
                     <td
                       colSpan="3"
-                      className="px-4 py-3 text-sm text-gray-500 text-center"
+                      className="px-4 py-6 text-sm text-center"
+                      style={{ color: "var(--text-muted)" }}
                     >
                       No symbol table information available
                     </td>
@@ -273,49 +310,36 @@ export default function PhaseVisualization({ phases }) {
               </tbody>
             </table>
           </div>
-
-          <div className="mt-4 md:ml-7 bg-gray-50 p-3 rounded border border-gray-200 flex">
-            <FiInfo className="h-4 w-4 text-gray-500 mr-2 flex-shrink-0 mt-0.5" />
-            <p className="text-xs text-gray-500">
-              <span className="font-medium">Note:</span> The symbol table stores
-              each identifier along with its type and the scope it belongs to.
-              Function parameters and local variables are recorded against their
-              enclosing function.
-            </p>
+          <div
+            className="mt-3 flex items-start gap-2 rounded-xl px-4 py-3 text-xs"
+            style={{
+              background: "rgba(255,255,255,0.03)",
+              border: "1px solid var(--border)",
+              color: "var(--text-muted)",
+            }}
+          >
+            <FiInfo className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
+            The symbol table stores each identifier with its type and scope. Function
+            parameters and local variables are recorded against their enclosing function.
           </div>
         </div>
       </PhaseCard>
 
-      <PhaseCard
-        phaseKey="intermediate"
-        number="4"
-        title="Intermediate Code Generation"
-        icon={FiCode}
-        color="purple"
-      >
+      {/* ── Phase 4 — Intermediate ────────────────────────────────────── */}
+      <PhaseCard phaseKey="intermediate" number="4" title="Intermediate Code Generation" icon={FiCode}>
         <TACDisplay code={phases.intermediateCode} />
       </PhaseCard>
 
-      <PhaseCard
-        phaseKey="optimization"
-        number="5"
-        title="Code Optimization"
-        icon={FiZap}
-        color="amber"
-      >
+      {/* ── Phase 5 — Optimization ────────────────────────────────────── */}
+      <PhaseCard phaseKey="optimization" number="5" title="Code Optimization" icon={FiZap}>
         <CodeOptimizer
           intermediateCode={phases.intermediateCode}
           optimizedCode={phases.optimizedCode}
         />
       </PhaseCard>
 
-      <PhaseCard
-        phaseKey="codegen"
-        number="6"
-        title="Code Generation"
-        icon={FiCpu}
-        color="green"
-      >
+      {/* ── Phase 6 — Code Generation ─────────────────────────────────── */}
+      <PhaseCard phaseKey="codegen" number="6" title="Code Generation" icon={FiCpu}>
         <AssemblyCode
           optimizedCode={phases.optimizedCode}
           assemblyCode={phases.assemblyCode}

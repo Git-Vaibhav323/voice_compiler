@@ -1,10 +1,8 @@
 import { FiVolume2, FiSquare } from "react-icons/fi";
 
 /**
- * The per-phase "read this aloud" control.
- *
- * Rendered inside each phase header. Pressing it while it is already speaking
- * stops the narration, so it doubles as a stop button.
+ * Per-phase "read aloud" toggle button.
+ * Returns null when speech synthesis is unavailable.
  */
 const SpeakButton = ({ active, speaking, supported, onClick, label }) => {
   if (!supported) return null;
@@ -19,12 +17,35 @@ const SpeakButton = ({ active, speaking, supported, onClick, label }) => {
       }}
       title={isActive ? "Stop reading" : `Read ${label} aloud`}
       aria-label={isActive ? "Stop reading" : `Read ${label} aloud`}
-      className={`flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-full border transition-all cursor-pointer flex-shrink-0
-        ${
-          isActive
-            ? "bg-rose-500 border-rose-500 text-white shadow-sm"
-            : "bg-white border-slate-300 text-slate-600 hover:bg-blue-50 hover:border-blue-400 hover:text-blue-700"
-        }`}
+      className="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-full transition-all cursor-pointer flex-shrink-0"
+      style={
+        isActive
+          ? {
+              background: "linear-gradient(135deg,#6366F1,#A855F7)",
+              border: "none",
+              color: "#fff",
+              boxShadow: "0 2px 12px rgba(99,102,241,0.4)",
+            }
+          : {
+              background: "rgba(255,255,255,0.05)",
+              border: "1px solid var(--border-mid)",
+              color: "var(--text-secondary)",
+            }
+      }
+      onMouseEnter={(e) => {
+        if (!isActive) {
+          e.currentTarget.style.borderColor = "rgba(99,102,241,0.4)";
+          e.currentTarget.style.color = "#a5b4fc";
+          e.currentTarget.style.background = "rgba(99,102,241,0.1)";
+        }
+      }}
+      onMouseLeave={(e) => {
+        if (!isActive) {
+          e.currentTarget.style.borderColor = "var(--border-mid)";
+          e.currentTarget.style.color = "var(--text-secondary)";
+          e.currentTarget.style.background = "rgba(255,255,255,0.05)";
+        }
+      }}
     >
       {isActive ? (
         <>

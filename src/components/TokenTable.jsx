@@ -8,6 +8,32 @@ import {
   FiX,
 } from "react-icons/fi";
 
+/* ─── Token type → accent colours (indigo/violet palette) ──────────── */
+const TOKEN_STYLES = {
+  IDENTIFIER:  { bg: "rgba(139,92,246,0.12)", border: "rgba(139,92,246,0.25)", text: "#c4b5fd" },
+  OPERATOR:    { bg: "rgba(99,102,241,0.12)",  border: "rgba(99,102,241,0.25)",  text: "#a5b4fc" },
+  KEYWORD:     { bg: "rgba(59,130,246,0.12)",  border: "rgba(59,130,246,0.25)",  text: "#93c5fd" },
+  CONSTANT:    { bg: "rgba(16,185,129,0.10)",  border: "rgba(16,185,129,0.25)",  text: "#6ee7b7" },
+  LITERAL:     { bg: "rgba(16,185,129,0.10)",  border: "rgba(16,185,129,0.25)",  text: "#6ee7b7" },
+  NUMBER:      { bg: "rgba(16,185,129,0.10)",  border: "rgba(16,185,129,0.25)",  text: "#6ee7b7" },
+  STRING:      { bg: "rgba(236,72,153,0.10)",  border: "rgba(236,72,153,0.25)",  text: "#f9a8d4" },
+  STRING_LITERAL: { bg: "rgba(236,72,153,0.10)", border: "rgba(236,72,153,0.25)", text: "#f9a8d4" },
+  PUNCTUATOR:  { bg: "rgba(245,158,11,0.10)",  border: "rgba(245,158,11,0.2)",   text: "#fcd34d" },
+  PUNCTUATION: { bg: "rgba(245,158,11,0.10)",  border: "rgba(245,158,11,0.2)",   text: "#fcd34d" },
+  DELIMITER:   { bg: "rgba(245,158,11,0.10)",  border: "rgba(245,158,11,0.2)",   text: "#fcd34d" },
+  PREPROCESSOR:{ bg: "rgba(6,182,212,0.10)",   border: "rgba(6,182,212,0.2)",    text: "#67e8f9" },
+  DEFAULT:     { bg: "rgba(255,255,255,0.05)",  border: "rgba(255,255,255,0.1)",  text: "rgba(255,255,255,0.55)" },
+};
+
+const getTokenStyle = (type) => {
+  if (!type) return TOKEN_STYLES.DEFAULT;
+  const u = type.toUpperCase();
+  for (const [key, val] of Object.entries(TOKEN_STYLES)) {
+    if (u.includes(key)) return val;
+  }
+  return TOKEN_STYLES.DEFAULT;
+};
+
 const TokenTable = ({ tokens }) => {
   const [sortField, setSortField] = useState(null);
   const [sortDirection, setSortDirection] = useState("asc");
@@ -16,288 +42,226 @@ const TokenTable = ({ tokens }) => {
 
   if (!tokens || !Array.isArray(tokens) || tokens.length === 0) {
     return (
-      <div className="bg-slate-50 rounded-lg p-6 text-center">
-        <FiInfo className="w-8 h-8 text-slate-400 mx-auto mb-2" />
-        <p className="text-slate-500 text-sm">No tokens to display</p>
-        <p className="text-slate-400 text-xs mt-1">
-          Code will be tokenized during analysis
-        </p>
+      <div
+        className="rounded-xl p-8 text-center"
+        style={{ backgroundColor: "var(--bg-raised)", border: "1px solid var(--border)" }}
+      >
+        <FiInfo className="w-7 h-7 mx-auto mb-2" style={{ color: "var(--text-muted)" }} />
+        <p className="text-sm" style={{ color: "var(--text-muted)" }}>No tokens to display</p>
       </div>
     );
   }
 
-  const normalizedTokens = tokens.map((token, index) => {
-    if (token.lexeme && token.token) {
-      return token;
-    }
+  const normalized = tokens.map((t, i) =>
+    t.lexeme && t.token
+      ? { ...t, _index: i }
+      : { lexeme: t.value || t.lexeme || "", token: t.type || t.token || "UNKNOWN", attribute: t.attribute || t.line || null, _index: i }
+  );
 
-    return {
-      lexeme: token.value || token.lexeme || "",
-      token: token.type || token.token || "UNKNOWN",
-      attribute: token.attribute || token.line || null,
-      _original: token,
-      _index: index,
-    };
-  });
-
-  const filteredTokens = normalizedTokens.filter((token) => {
-    if (!token) return false;
-
-    const lexeme = (token.lexeme || "").toString().toLowerCase();
-    const tokenType = (token.token || "").toString().toLowerCase();
-    const attribute = token.attribute
-      ? token.attribute.toString().toLowerCase()
-      : "";
-    const searchLower = filterText.toLowerCase();
-
+  const filtered = normalized.filter((t) => {
+    const s = filterText.toLowerCase();
     return (
-      lexeme.includes(searchLower) ||
-      tokenType.includes(searchLower) ||
-      attribute.includes(searchLower)
+      (t.lexeme || "").toLowerCase().includes(s) ||
+      (t.token || "").toLowerCase().includes(s) ||
+      (t.attribute ? t.attribute.toString().toLowerCase().includes(s) : false)
     );
   });
 
-  const sortedTokens = [...filteredTokens].sort((a, b) => {
+  const sorted = [...filtered].sort((a, b) => {
     if (!sortField) return 0;
-
-    const aValue = (a[sortField] || "").toString();
-    const bValue = (b[sortField] || "").toString();
-
-    if (sortDirection === "asc") {
-      return aValue.localeCompare(bValue);
-    } else {
-      return bValue.localeCompare(aValue);
-    }
+    const av = (a[sortField] || "").toString();
+    const bv = (b[sortField] || "").toString();
+    return sortDirection === "asc" ? av.localeCompare(bv) : bv.localeCompare(av);
   });
 
-  const handleSort = (field) => {
-    if (sortField === field) {
-      setSortDirection(sortDirection === "asc" ? "desc" : "asc");
-    } else {
-      setSortField(field);
-      setSortDirection("asc");
-    }
+  const handleSort = (f) => {
+    if (sortField === f) setSortDirection(d => d === "asc" ? "desc" : "asc");
+    else { setSortField(f); setSortDirection("asc"); }
   };
 
-  const getSortIcon = (field) => {
-    if (sortField !== field) return null;
-    return sortDirection === "asc" ? (
-      <FiChevronUp className="w-3 h-3 ml-1" />
-    ) : (
-      <FiChevronDown className="w-3 h-3 ml-1" />
-    );
-  };
-
-  const clearFilters = () => {
-    setFilterText("");
-    setSortField(null);
-    setSortDirection("asc");
-  };
-
-  const tokenTypes = [
-    ...new Set(normalizedTokens.map((token) => token.token).filter(Boolean)),
-  ];
+  const tokenTypes = [...new Set(normalized.map((t) => t.token).filter(Boolean))];
   const hasFilters = filterText || sortField;
 
-  const copyToClipboard = async (text) => {
-    try {
-      await navigator.clipboard.writeText(text);
-      // You could add a toast notification here
-    } catch (err) {
-      console.error("Failed to copy:", err);
-    }
-  };
-
   return (
-    <div className="bg-white rounded-lg border border-slate-200 overflow-hidden">
-      <div className="p-4 bg-slate-50 border-b border-slate-200">
-        <div className="flex flex-col sm:flex-row gap-3 justify-between items-start sm:items-center">
-          <div className="flex items-center gap-2">
-            <h3 className="text-sm font-medium text-slate-700">
-              Token Analysis
-            </h3>
-            <span className="bg-blue-100 text-blue-800 text-xs px-2 py-1 rounded-full">
-              {filteredTokens.length} of {normalizedTokens.length} tokens
-            </span>
-          </div>
-
-          <div className="flex gap-2 w-full sm:w-auto">
-            <div className="relative flex-1 sm:w-48">
-              <FiSearch className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400 w-4 h-4" />
-              <input
-                type="text"
-                placeholder="Search tokens..."
-                value={filterText}
-                onChange={(e) => setFilterText(e.target.value)}
-                className="w-full pl-9 pr-4 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
-              />
-            </div>
-
-            <button
-              onClick={() => setShowFilters(!showFilters)}
-              className="p-2 border border-slate-300 rounded-lg hover:bg-slate-100 transition-colors"
-              title="Show filters"
-            >
-              <FiFilter className="w-4 h-4 text-slate-600" />
-            </button>
-          </div>
+    <div className="rounded-xl overflow-hidden" style={{ border: "1px solid var(--border)" }}>
+      {/* Header bar */}
+      <div
+        className="px-4 py-3 flex flex-col sm:flex-row gap-3 justify-between items-start sm:items-center"
+        style={{ backgroundColor: "var(--bg-raised)", borderBottom: "1px solid var(--border)" }}
+      >
+        <div className="flex items-center gap-2">
+          <span className="text-sm font-medium" style={{ color: "var(--text-secondary)" }}>Tokens</span>
+          <span
+            className="font-code text-xs px-2 py-0.5 rounded-full"
+            style={{ background: "rgba(99,102,241,0.12)", border: "1px solid rgba(99,102,241,0.2)", color: "#a5b4fc" }}
+          >
+            {filtered.length}/{normalized.length}
+          </span>
         </div>
 
-        {/*  Filters */}
-        {showFilters && (
-          <div className="mt-3 p-4 bg-white rounded-lg border border-slate-200">
-            <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center">
-              <div className="flex-1">
-                <label className="block text-sm font-medium text-slate-700 mb-2">
-                  Filter by token type
-                </label>
-                <select
-                  onChange={(e) => setFilterText(e.target.value)}
-                  className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
-                >
-                  <option value="">All token types</option>
-                  {tokenTypes.map((type) => (
-                    <option key={type} value={type}>
-                      {type}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              {hasFilters && (
-                <button
-                  onClick={clearFilters}
-                  className="flex items-center gap-2 px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg transition-colors text-sm font-medium cursor-pointer"
-                >
-                  <FiX className="w-4 h-4" />
-                  Clear filters
-                </button>
-              )}
-            </div>
+        <div className="flex gap-2 w-full sm:w-auto">
+          <div className="relative flex-1 sm:w-48">
+            <FiSearch className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5" style={{ color: "var(--text-muted)" }} />
+            <input
+              type="text"
+              placeholder="Search tokens…"
+              value={filterText}
+              onChange={(e) => setFilterText(e.target.value)}
+              className="w-full pl-9 pr-4 py-2 rounded-lg text-sm outline-none"
+              style={{
+                backgroundColor: "var(--bg-elevated)",
+                border: "1px solid var(--border-mid)",
+                color: "var(--text-primary)",
+                caretColor: "#a5b4fc",
+              }}
+            />
           </div>
-        )}
+          <button
+            onClick={() => setShowFilters(!showFilters)}
+            className="p-2 rounded-lg transition-colors cursor-pointer"
+            style={{
+              backgroundColor: showFilters ? "rgba(99,102,241,0.15)" : "var(--bg-elevated)",
+              border: showFilters ? "1px solid rgba(99,102,241,0.3)" : "1px solid var(--border-mid)",
+              color: showFilters ? "#a5b4fc" : "var(--text-secondary)",
+            }}
+            title="Filter by type"
+          >
+            <FiFilter className="w-3.5 h-3.5" />
+          </button>
+        </div>
       </div>
+
+      {/* Filter panel */}
+      {showFilters && (
+        <div className="px-4 py-3 flex flex-col sm:flex-row gap-3 items-start sm:items-center"
+          style={{ backgroundColor: "var(--bg-raised)", borderBottom: "1px solid var(--border)" }}>
+          <select
+            onChange={(e) => setFilterText(e.target.value)}
+            className="flex-1 px-3 py-2 rounded-lg text-sm outline-none cursor-pointer"
+            style={{
+              backgroundColor: "var(--bg-elevated)",
+              border: "1px solid var(--border-mid)",
+              color: "var(--text-primary)",
+            }}
+          >
+            <option value="">All token types</option>
+            {tokenTypes.map((t) => <option key={t} value={t}>{t}</option>)}
+          </select>
+          {hasFilters && (
+            <button
+              onClick={() => { setFilterText(""); setSortField(null); setSortDirection("asc"); }}
+              className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm cursor-pointer transition-all"
+              style={{ background: "rgba(255,255,255,0.05)", border: "1px solid var(--border)", color: "var(--text-secondary)" }}
+            >
+              <FiX className="w-3.5 h-3.5" /> Clear
+            </button>
+          )}
+        </div>
+      )}
 
       {/* Table */}
       <div className="overflow-x-auto">
         <table className="w-full">
-          <thead className="bg-slate-75">
-            <tr>
-              <th className="px-4 py-3 text-left text-xs font-medium text-slate-600 uppercase tracking-wider">
-                #
-              </th>
-              {["lexeme", "token", "attribute"].map((field) => (
+          <thead>
+            <tr style={{ backgroundColor: "var(--bg-raised)", borderBottom: "1px solid var(--border)" }}>
+              <th className="px-4 py-3 text-left font-code text-xs" style={{ color: "var(--text-muted)" }}>#</th>
+              {[
+                { key: "lexeme", label: "VALUE" },
+                { key: "token", label: "TYPE" },
+                { key: "attribute", label: "ATTRIBUTE" },
+              ].map(({ key, label }) => (
                 <th
-                  key={field}
-                  onClick={() => handleSort(field)}
-                  className="px-4 py-3 text-left text-xs font-medium text-slate-600 uppercase tracking-wider cursor-pointer hover:bg-slate-100 transition-colors group"
+                  key={key}
+                  onClick={() => handleSort(key)}
+                  className="px-4 py-3 text-left font-code text-xs cursor-pointer transition-colors select-none"
+                  style={{ color: sortField === key ? "#a5b4fc" : "var(--text-muted)" }}
                 >
-                  <div className="flex items-center">
-                    <span className="capitalize">
-                      {field === "lexeme"
-                        ? "Value"
-                        : field === "token"
-                        ? "Type"
-                        : field}
-                    </span>
-                    {getSortIcon(field)}
-                    {!getSortIcon(field) && (
-                      <FiChevronUp className="w-3 h-3 ml-1 opacity-0 group-hover:opacity-50 transition-opacity" />
-                    )}
+                  <div className="flex items-center gap-1">
+                    {label}
+                    {sortField === key
+                      ? sortDirection === "asc"
+                        ? <FiChevronUp className="w-3 h-3" />
+                        : <FiChevronDown className="w-3 h-3" />
+                      : <FiChevronUp className="w-3 h-3 opacity-0 group-hover:opacity-40" />}
                   </div>
                 </th>
               ))}
             </tr>
           </thead>
-          <tbody className="divide-y divide-slate-200">
-            {sortedTokens.length === 0 ? (
+          <tbody>
+            {sorted.length === 0 ? (
               <tr>
-                <td
-                  colSpan="4"
-                  className="px-4 py-8 text-center text-slate-500 text-sm"
-                >
-                  <FiInfo className="w-5 h-5 mx-auto mb-2 text-slate-400" />
-                  No tokens match your search criteria
+                <td colSpan="4" className="px-4 py-10 text-center text-sm" style={{ color: "var(--text-muted)" }}>
+                  No tokens match your search
                 </td>
               </tr>
             ) : (
-              sortedTokens.map((token, index) => (
-                <tr
-                  key={token._index || index}
-                  className="hover:bg-slate-50 transition-colors group"
-                >
-                  <td className="px-4 py-3 text-sm text-slate-500">
-                    {token._index !== undefined ? token._index + 1 : index + 1}
-                  </td>
-                  <td className="px-4 py-3 whitespace-nowrap">
-                    <div className="flex items-center">
+              sorted.map((token, idx) => {
+                const style = getTokenStyle(token.token);
+                return (
+                  <tr
+                    key={token._index ?? idx}
+                    style={{
+                      backgroundColor: idx % 2 === 0 ? "transparent" : "rgba(255,255,255,0.015)",
+                      borderBottom: "1px solid var(--border)",
+                    }}
+                  >
+                    <td className="px-4 py-3 font-code text-xs" style={{ color: "var(--text-muted)" }}>
+                      {(token._index ?? idx) + 1}
+                    </td>
+                    <td className="px-4 py-3">
                       <span
-                        className="text-sm font-mono bg-slate-100 rounded px-2 py-1 font-medium text-slate-800 cursor-pointer hover:bg-slate-200 transition-colors"
-                        onClick={() => copyToClipboard(token.lexeme)}
+                        className="font-code text-xs px-2.5 py-1 rounded cursor-pointer transition-all"
+                        style={{
+                          backgroundColor: "rgba(255,255,255,0.05)",
+                          border: "1px solid var(--border-mid)",
+                          color: "var(--text-primary)",
+                        }}
+                        onClick={() => navigator.clipboard.writeText(token.lexeme).catch(() => {})}
                         title="Click to copy"
                       >
                         {token.lexeme || "—"}
                       </span>
-                    </div>
-                  </td>
-                  <td className="px-4 py-3 whitespace-nowrap">
-                    <span
-                      className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getTokenTypeColor(
-                        token.token
-                      )}`}
-                    >
-                      {token.token || "UNKNOWN"}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3 whitespace-nowrap text-sm text-slate-600">
-                    {token.attribute || (
-                      <span className="text-slate-400 italic">—</span>
-                    )}
-                  </td>
-                </tr>
-              ))
+                    </td>
+                    <td className="px-4 py-3">
+                      <span
+                        className="font-code text-xs px-2.5 py-0.5 rounded-full"
+                        style={{
+                          backgroundColor: style.bg,
+                          border: `1px solid ${style.border}`,
+                          color: style.text,
+                        }}
+                      >
+                        {token.token || "UNKNOWN"}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 font-code text-xs" style={{ color: token.attribute ? "var(--text-secondary)" : "var(--text-muted)" }}>
+                      {token.attribute || "—"}
+                    </td>
+                  </tr>
+                );
+              })
             )}
           </tbody>
         </table>
       </div>
 
-      {sortedTokens.length > 0 && (
-        <div className="px-4 py-3 bg-slate-50 border-t border-slate-200 text-xs text-slate-500">
-          Showing {sortedTokens.length} token
-          {sortedTokens.length !== 1 ? "s" : ""}
-          {hasFilters && " (filtered)"}
-          {sortField && ` • sorted by ${sortField} ${sortDirection}`}
+      {sorted.length > 0 && (
+        <div
+          className="px-4 py-2 font-code text-xs"
+          style={{
+            backgroundColor: "var(--bg-raised)",
+            borderTop: "1px solid var(--border)",
+            color: "var(--text-muted)",
+          }}
+        >
+          {sorted.length} token{sorted.length !== 1 ? "s" : ""}
+          {hasFilters && " · filtered"}
+          {sortField && ` · sorted by ${sortField} ${sortDirection}`}
         </div>
       )}
     </div>
   );
-};
-
-// token type colors
-const getTokenTypeColor = (type) => {
-  if (!type) return "bg-gray-100 text-gray-800";
-
-  const typeUpper = type.toUpperCase();
-  const colorMap = {
-    IDENTIFIER: "bg-purple-100 text-purple-800",
-    OPERATOR: "bg-blue-100 text-blue-800",
-    NUMBER: "bg-green-100 text-green-800",
-    LITERAL: "bg-green-100 text-green-800",
-    KEYWORD: "bg-red-100 text-red-800",
-    DELIMITER: "bg-yellow-100 text-yellow-800",
-    ASSIGNMENT: "bg-indigo-100 text-indigo-800",
-    COMMENT: "bg-gray-100 text-gray-600",
-    STRING: "bg-pink-100 text-pink-800",
-    PUNCTUATION: "bg-orange-100 text-orange-800",
-  };
-
-  for (const [key, value] of Object.entries(colorMap)) {
-    if (typeUpper.includes(key)) {
-      return value;
-    }
-  }
-
-  return "bg-gray-100 text-gray-800";
 };
 
 export default TokenTable;

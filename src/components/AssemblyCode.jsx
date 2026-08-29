@@ -1,177 +1,197 @@
-import { FiCpu, FiInfo, FiArrowRight } from "react-icons/fi";
+import { FiInfo, FiArrowRight } from "react-icons/fi";
+
+/* Opcode → accent style */
+const OPCODE_STYLES = {
+  LOAD:  { bg: "rgba(99,102,241,0.12)",  border: "rgba(99,102,241,0.25)",  text: "#a5b4fc" },
+  STORE: { bg: "rgba(139,92,246,0.12)",  border: "rgba(139,92,246,0.25)",  text: "#c4b5fd" },
+  ADD:   { bg: "rgba(16,185,129,0.10)",  border: "rgba(16,185,129,0.25)",  text: "#6ee7b7" },
+  SUB:   { bg: "rgba(245,158,11,0.10)",  border: "rgba(245,158,11,0.2)",   text: "#fcd34d" },
+  MUL:   { bg: "rgba(59,130,246,0.10)",  border: "rgba(59,130,246,0.25)",  text: "#93c5fd" },
+  DIV:   { bg: "rgba(236,72,153,0.10)",  border: "rgba(236,72,153,0.2)",   text: "#f9a8d4" },
+  MOD:   { bg: "rgba(6,182,212,0.10)",   border: "rgba(6,182,212,0.2)",    text: "#67e8f9" },
+  CMP:   { bg: "rgba(245,158,11,0.10)",  border: "rgba(245,158,11,0.2)",   text: "#fcd34d" },
+  JMP:   { bg: "rgba(239,68,68,0.10)",   border: "rgba(239,68,68,0.2)",    text: "#fca5a5" },
+  JE:    { bg: "rgba(239,68,68,0.10)",   border: "rgba(239,68,68,0.2)",    text: "#fca5a5" },
+  JNE:   { bg: "rgba(239,68,68,0.10)",   border: "rgba(239,68,68,0.2)",    text: "#fca5a5" },
+  JL:    { bg: "rgba(239,68,68,0.10)",   border: "rgba(239,68,68,0.2)",    text: "#fca5a5" },
+  JG:    { bg: "rgba(239,68,68,0.10)",   border: "rgba(239,68,68,0.2)",    text: "#fca5a5" },
+  CALL:  { bg: "rgba(168,85,247,0.12)",  border: "rgba(168,85,247,0.25)",  text: "#d8b4fe" },
+  RET:   { bg: "rgba(168,85,247,0.12)",  border: "rgba(168,85,247,0.25)",  text: "#d8b4fe" },
+  PUSH:  { bg: "rgba(99,102,241,0.10)",  border: "rgba(99,102,241,0.2)",   text: "#a5b4fc" },
+  POP:   { bg: "rgba(99,102,241,0.10)",  border: "rgba(99,102,241,0.2)",   text: "#a5b4fc" },
+  DEFAULT:{ bg:"rgba(255,255,255,0.05)", border:"rgba(255,255,255,0.1)",   text:"rgba(255,255,255,0.5)" },
+};
+
+const getOpcodeStyle = (op) => OPCODE_STYLES[op?.toUpperCase()] || OPCODE_STYLES.DEFAULT;
+
+const explain = (line) => {
+  const op = line.trim().split(/\s+/)[0]?.toUpperCase();
+  const EXPLAINS = {
+    LOAD:  "Loads a value from memory into a register",
+    STORE: "Stores a register value back to memory",
+    ADD:   "Adds operand to register",
+    SUB:   "Subtracts operand from register",
+    MUL:   "Multiplies register by operand",
+    DIV:   "Divides register by operand",
+    MOD:   "Computes remainder",
+    CMP:   "Compares two values and sets flags",
+    JMP:   "Unconditional jump to label",
+    JE:    "Jump if equal",
+    JNE:   "Jump if not equal",
+    JL:    "Jump if less than",
+    JG:    "Jump if greater than",
+    CALL:  "Calls a function, saves return address",
+    RET:   "Returns from function",
+    PUSH:  "Pushes value onto stack",
+    POP:   "Pops value from stack",
+    SETL:  "Set register 1 if less than",
+    SETG:  "Set register 1 if greater than",
+    SETE:  "Set register 1 if equal",
+  };
+  return EXPLAINS[op] || "Performs the specified operation";
+};
 
 const AssemblyCode = ({ optimizedCode, assemblyCode }) => {
-  const hasValidAssemblyCode =
-    assemblyCode && Array.isArray(assemblyCode) && assemblyCode.length > 0;
-
-  if (!hasValidAssemblyCode) {
+  if (!assemblyCode || !Array.isArray(assemblyCode) || assemblyCode.length === 0) {
     return (
-      <div className="p-6 bg-gray-800 rounded-lg text-center">
-        <div className="text-gray-400 mb-3">No assembly code available</div>
-        <div className="text-xs text-gray-500">
-          This could be due to an unsupported expression or a processing error.
-          Try a different expression like "total := price + rate * 60".
-        </div>
+      <div
+        className="py-8 text-center rounded-xl text-sm"
+        style={{ backgroundColor: "var(--bg-raised)", border: "1px solid var(--border)", color: "var(--text-muted)" }}
+      >
+        No assembly code available.
       </div>
     );
   }
 
-  const getInstructionExplanation = (instruction) => {
-    if (instruction.startsWith("LOAD")) {
-      return "Loads a value from memory into a register";
-    } else if (instruction.startsWith("STORE")) {
-      return "Stores a value from a register to memory";
-    } else if (instruction.startsWith("ADD")) {
-      return "Adds the value to the register";
-    } else if (instruction.startsWith("SUB")) {
-      return "Subtracts the value from the register";
-    } else if (instruction.startsWith("MUL")) {
-      return "Multiplies the register by the value";
-    } else if (instruction.startsWith("DIV")) {
-      return "Divides the register by the value";
-    } else {
-      return "Performs the specified operation";
-    }
-  };
-
+  /* TAC → Assembly mapping */
   const mapTacToAssembly = () => {
-    if (!optimizedCode || optimizedCode.length === 0) return [];
-
+    if (!optimizedCode?.length) return [];
     const mapping = [];
-    let assemblyIndex = 0;
-
-    for (let i = 0; i < optimizedCode.length; i++) {
-      const tac = optimizedCode[i];
-      const assemblyStart = assemblyIndex;
-
-      if (tac.includes("*")) {
-        assemblyIndex += 3; // LOAD + MUL + STORE
-      } else if (tac.includes("+")) {
-        assemblyIndex += 3; // LOAD + ADD + STORE
-      } else if (tac.includes("-")) {
-        assemblyIndex += 3; // LOAD + SUB + STORE
-      } else {
-        assemblyIndex += 2; // LOAD + STORE
-      }
-
-      const assemblyEnd = Math.min(assemblyIndex, assemblyCode.length);
-
-      mapping.push({
-        tac,
-        assembly: assemblyCode.slice(assemblyStart, assemblyEnd),
-      });
+    let idx = 0;
+    for (const tac of optimizedCode) {
+      const start = idx;
+      if (tac.includes("*") || tac.includes("+") || tac.includes("-")) idx += 3;
+      else idx += 2;
+      mapping.push({ tac, assembly: assemblyCode.slice(start, Math.min(idx, assemblyCode.length)) });
     }
-
     return mapping;
   };
 
-  const tacToAssemblyMap = mapTacToAssembly();
+  const tacMap = mapTacToAssembly();
 
   return (
-    <div>
-      <div className="flex items-center justify-between mb-3">
-        <div className="flex items-center text-sm text-gray-500">
-          <FiCpu className="mr-1 text-green-500" />
-          Target Assembly Code:
-        </div>
-        <div className="hidden md:flex px-2 py-0.5 bg-green-100 text-green-800 text-xs rounded-full font-medium">
-          Generic Assembly
-        </div>
+    <div className="space-y-4">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <span className="text-xs" style={{ color: "var(--text-muted)" }}>Target assembly — register machine</span>
+        <span
+          className="font-code text-xs px-2.5 py-0.5 rounded-full"
+          style={{ background: "rgba(16,185,129,0.1)", border: "1px solid rgba(16,185,129,0.2)", color: "#6ee7b7" }}
+        >
+          Generic ISA
+        </span>
       </div>
 
-      {/* Desktop view (grid-based table) */}
-      <div className="hidden md:block bg-gray-900 rounded-lg overflow-hidden border border-gray-800">
-        <div className="grid grid-cols-12 text-xs text-gray-400 bg-gray-800 p-2">
-          <div className="col-span-1">Line</div>
-          <div className="col-span-3">Instruction</div>
-          <div className="col-span-2">Opcode</div>
-          <div className="col-span-6">Description</div>
+      {/* Code block */}
+      <div
+        className="rounded-xl overflow-hidden"
+        style={{ backgroundColor: "#060810", border: "1px solid var(--border)" }}
+      >
+        {/* Title bar */}
+        <div
+          className="flex items-center gap-2 px-4 py-2.5"
+          style={{ borderBottom: "1px solid var(--border)", backgroundColor: "rgba(16,185,129,0.04)" }}
+        >
+          <div className="flex gap-1.5">
+            <span className="w-2.5 h-2.5 rounded-full" style={{ background: "rgba(255,255,255,0.1)" }} />
+            <span className="w-2.5 h-2.5 rounded-full" style={{ background: "rgba(255,255,255,0.1)" }} />
+            <span className="w-2.5 h-2.5 rounded-full" style={{ background: "rgba(255,255,255,0.1)" }} />
+          </div>
+          <span className="font-code text-xs ml-2" style={{ color: "var(--text-muted)" }}>output.asm</span>
         </div>
 
-        <div className="p-2 space-y-1">
-          {assemblyCode.map((line, index) => {
-            const parts = line.split(" ");
-            const opcode = parts[0];
-            // const operands = parts.slice(1).join(" ");
+        {/* Desktop table */}
+        <div className="hidden md:block p-3 overflow-x-auto">
+          <div className="space-y-0.5">
+            {assemblyCode.map((line, i) => {
+              const opcode = line.trim().split(/\s+/)[0];
+              const os = getOpcodeStyle(opcode);
+              return (
+                <div
+                  key={i}
+                  className="grid gap-3 items-center rounded-lg px-3 py-1.5 transition-colors"
+                  style={{
+                    gridTemplateColumns: "2rem 1fr 5rem 1fr",
+                    backgroundColor: "transparent",
+                  }}
+                  onMouseEnter={(e) => e.currentTarget.style.backgroundColor = "rgba(255,255,255,0.03)"}
+                  onMouseLeave={(e) => e.currentTarget.style.backgroundColor = "transparent"}
+                >
+                  <span className="font-code text-xs text-right" style={{ color: "var(--text-muted)" }}>{i + 1}</span>
+                  <code className="font-code text-sm" style={{ color: "#6ee7b7" }}>{line}</code>
+                  <span>
+                    <span
+                      className="font-code text-xs px-2 py-0.5 rounded-full"
+                      style={{ backgroundColor: os.bg, border: `1px solid ${os.border}`, color: os.text }}
+                    >
+                      {opcode}
+                    </span>
+                  </span>
+                  <span className="text-xs" style={{ color: "var(--text-muted)" }}>{explain(line)}</span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
 
+        {/* Mobile cards */}
+        <div className="md:hidden p-3 space-y-2">
+          {assemblyCode.map((line, i) => {
+            const opcode = line.trim().split(/\s+/)[0];
+            const os = getOpcodeStyle(opcode);
             return (
               <div
-                key={index}
-                className="grid grid-cols-12 items-center hover:bg-gray-800 rounded p-1"
+                key={i}
+                className="rounded-lg p-3"
+                style={{ backgroundColor: "rgba(255,255,255,0.02)", border: "1px solid var(--border)" }}
               >
-                <div className="col-span-1 text-gray-500 text-xs">
-                  {index + 1}
-                </div>
-                <code className="col-span-3 text-green-400 font-mono">
-                  {line}
-                </code>
-                <div className="col-span-2">
-                  <span className="px-1.5 py-0.5 bg-green-900 text-green-300 rounded text-xs font-medium">
+                <div className="flex items-center justify-between mb-1.5">
+                  <span className="font-code text-xs" style={{ color: "var(--text-muted)" }}>Line {i + 1}</span>
+                  <span
+                    className="font-code text-xs px-2 py-0.5 rounded-full"
+                    style={{ backgroundColor: os.bg, border: `1px solid ${os.border}`, color: os.text }}
+                  >
                     {opcode}
                   </span>
                 </div>
-                <div className="col-span-6 text-gray-400 text-xs">
-                  {getInstructionExplanation(line)}
-                </div>
+                <code className="block font-code text-sm mb-1" style={{ color: "#6ee7b7" }}>{line}</code>
+                <p className="text-xs" style={{ color: "var(--text-muted)" }}>{explain(line)}</p>
               </div>
             );
           })}
         </div>
       </div>
 
-      {/* Mobile view (simplified list) */}
-      <div className="md:hidden bg-gray-900 rounded-lg overflow-hidden border border-gray-800">
-        <div className="p-2 space-y-3">
-          {assemblyCode.map((line, index) => {
-            const parts = line.split(" ");
-            const opcode = parts[0];
-            // const operands = parts.slice(1).join(" ");
-
-            return (
-              <div
-                key={index}
-                className="hover:bg-gray-800 rounded p-2 border-b border-gray-800 last:border-b-0"
-              >
-                <div className="flex items-center justify-between mb-1">
-                  <span className="text-gray-500 text-xs">
-                    Line {index + 1}
-                  </span>
-                  <span className="px-1.5 py-0.5 bg-green-900 text-green-300 rounded text-xs font-medium">
-                    {opcode}
-                  </span>
-                </div>
-                <code className="block mb-1.5 text-green-400 font-mono text-sm">
-                  {line}
-                </code>
-                <div className="text-gray-400 text-xs">
-                  {getInstructionExplanation(line)}
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      </div>
-
-      {tacToAssemblyMap.length > 0 && (
-        <div className="mt-4 bg-gray-800 p-3 rounded-lg border border-gray-700">
-          <h3 className="text-sm text-green-300 font-medium mb-2 flex items-center">
-            <FiArrowRight className="mr-1" /> Three-Address Code to Assembly
-            Mapping:
+      {/* TAC → ASM mapping */}
+      {tacMap.length > 0 && (
+        <div
+          className="rounded-xl p-4"
+          style={{ backgroundColor: "var(--bg-raised)", border: "1px solid var(--border)" }}
+        >
+          <h3
+            className="text-xs font-semibold mb-3 flex items-center gap-2"
+            style={{ color: "var(--text-secondary)" }}
+          >
+            <FiArrowRight className="w-3.5 h-3.5" style={{ color: "#6ee7b7" }} />
+            TAC → Assembly mapping
           </h3>
           <div className="space-y-3">
-            {tacToAssemblyMap.map((mapping, index) => (
-              <div key={index} className="border-t border-gray-700 pt-2">
-                <div className="text-amber-400 text-xs mb-1 font-mono">
-                  {mapping.tac}
-                </div>
-                <div className="pl-4 border-l-2 border-gray-600">
-                  {mapping.assembly.map((asm, asmIndex) => (
-                    <div
-                      key={asmIndex}
-                      className="text-green-400 text-xs font-mono mb-1"
-                    >
-                      {asm}
-                    </div>
+            {tacMap.map((m, i) => (
+              <div key={i} style={{ borderTop: "1px solid var(--border)", paddingTop: "0.75rem" }}>
+                <div className="font-code text-xs mb-1.5" style={{ color: "#fcd34d" }}>{m.tac}</div>
+                <div className="pl-3" style={{ borderLeft: "2px solid rgba(99,102,241,0.25)" }}>
+                  {m.assembly.map((a, j) => (
+                    <div key={j} className="font-code text-xs mb-0.5" style={{ color: "#6ee7b7" }}>{a}</div>
                   ))}
                 </div>
               </div>
@@ -180,29 +200,17 @@ const AssemblyCode = ({ optimizedCode, assemblyCode }) => {
         </div>
       )}
 
-      <div className="mt-4 flex items-start space-x-2 bg-gray-800 p-3 rounded border border-gray-700 text-sm">
-        <FiInfo className="text-green-500 mt-0.5 flex-shrink-0" />
+      {/* Info panel */}
+      <div
+        className="flex items-start gap-3 rounded-xl px-4 py-3 text-xs"
+        style={{ background: "rgba(16,185,129,0.05)", border: "1px solid rgba(16,185,129,0.15)", color: "var(--text-secondary)" }}
+      >
+        <FiInfo className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" style={{ color: "#6ee7b7" }} />
         <div>
-          <p className="text-green-300">
-            <span className="font-medium">Assembly Code</span> is the low-level
-            language that runs directly on the processor.
-          </p>
-          <ul className="list-disc list-inside mt-2 text-gray-400 space-y-1 text-xs">
-            <li>
-              Each instruction typically corresponds to a single processor
-              operation
-            </li>
-            <li>
-              Registers (R1, R2, etc.) are used for temporary storage during
-              computation
-            </li>
-            <li>
-              LOAD/STORE operations move data between memory and registers
-            </li>
-            <li>
-              ADD/SUB/MUL/DIV perform arithmetic operations on register values
-            </li>
-          </ul>
+          <span className="font-semibold" style={{ color: "#6ee7b7" }}>Assembly Code</span>
+          {" "}— LOAD/STORE moves values between memory and registers. ADD/SUB/MUL/DIV operate
+          on register values. Register allocation — deciding which values live in which
+          registers — is where real compilers spend considerable effort.
         </div>
       </div>
     </div>

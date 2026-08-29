@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import {
   FiAlertTriangle,
   FiCopy,
@@ -9,372 +9,315 @@ import {
   FiCode,
   FiBookOpen,
   FiLoader,
+  FiX,
 } from "react-icons/fi";
 import Tree from "react-d3-tree";
 
+/* ─── Dark palette for node types ─────────────────────────────────── */
+const NODE_COLORS = {
+  operator:    { fill: "#1a1d2e", stroke: "#6366F1", label: "#a5b4fc", badge: "rgba(99,102,241,0.15)" },
+  identifier:  { fill: "#1a1d2e", stroke: "#8B5CF6", label: "#c4b5fd", badge: "rgba(139,92,246,0.15)" },
+  literal:     { fill: "#1a1d2e", stroke: "#10b981", label: "#6ee7b7", badge: "rgba(16,185,129,0.15)" },
+  function:    { fill: "#1a1d2e", stroke: "#92400e", label: "#fbbf24", badge: "rgba(180,110,30,0.15)" },
+  keyword:     { fill: "#1a1d2e", stroke: "#3b82f6", label: "#93c5fd", badge: "rgba(59,130,246,0.15)" },
+  declaration: { fill: "#1a1d2e", stroke: "#06b6d4", label: "#67e8f9", badge: "rgba(6,182,212,0.15)" },
+  default:     { fill: "#1a1d2e", stroke: "rgba(255,255,255,0.2)", label: "rgba(255,255,255,0.65)", badge: "rgba(255,255,255,0.05)" },
+};
+
+const MAX_LABEL_CHARS = 18;
+
+const truncate = (str, max = MAX_LABEL_CHARS) =>
+  str && str.length > max ? str.slice(0, max) + "…" : str;
+
+/* ─── Collect all tree nodes for bounding-box calc ─────────────────── */
+function collectNodes(node, x = 0, y = 0, nodeW = 200, nodeH = 120, nodes = []) {
+  if (!node) return nodes;
+  nodes.push({ x, y });
+  if (node.children?.length) {
+    const total = node.children.length;
+    const startX = x - ((total - 1) * nodeW * 1.3) / 2;
+    node.children.forEach((child, i) => {
+      collectNodes(child, startX + i * nodeW * 1.3, y + nodeH, nodeW, nodeH, nodes);
+    });
+  }
+  return nodes;
+}
+
+/* ─── Collapse nodes deeper than maxDepth ────────────────────────── */
+function collapseDeep(node, depth = 0, maxDepth = 4) {
+  if (!node) return node;
+  if (depth >= maxDepth && node.children?.length) {
+    const count = countDescendants(node);
+    return {
+      ...node,
+      _collapsedCount: count,
+      _collapsed: true,
+      children: [],
+    };
+  }
+  return {
+    ...node,
+    children: node.children?.map((c) => collapseDeep(c, depth + 1, maxDepth)),
+  };
+}
+
+function countDescendants(node) {
+  if (!node?.children?.length) return 0;
+  return node.children.reduce(
+    (sum, c) => sum + 1 + countDescendants(c),
+    0
+  );
+}
+
 const ASTVisualization = ({ astString, astTree }) => {
   const [treeData, setTreeData] = useState(null);
-  const [isExpanded, setIsExpanded] = useState(false);
+  const [isFullscreen, setIsFullscreen] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [copied, setCopied] = useState(false);
   const [viewMode, setViewMode] = useState("visual");
   const [showLabels, setShowLabels] = useState(true);
-  const [dimensions, setDimensions] = useState({ width: 800, height: 400 });
-  const [zoom, setZoom] = useState(1);
+  const [zoom, setZoom] = useState(0.8);
+  const [translate, setTranslate] = useState({ x: 0, y: 60 });
   const [error, setError] = useState(null);
-  const treeContainerRef = useRef(null);
 
-  // Resize observer
-  useEffect(() => {
-    if (!treeContainerRef.current) return;
-    const resizeObserver = new ResizeObserver((entries) => {
-      const { width } = entries[0].contentRect;
-      setDimensions({ width, height: isExpanded ? 500 : 300 });
+  const containerRef = useRef(null);
+  const fullscreenRef = useRef(null);
+  const triggerRef = useRef(null);
+  const treeRef = useRef(null);
+
+  /* ── Auto-fit: compute bounding box and set zoom + translate ─────── */
+  const autoFit = useCallback((data, containerWidth, containerHeight) => {
+    if (!data) return;
+    const nodes = collectNodes(data);
+    if (!nodes.length) return;
+    const xs = nodes.map((n) => n.x);
+    const ys = nodes.map((n) => n.y);
+    const minX = Math.min(...xs);
+    const maxX = Math.max(...xs);
+    const minY = Math.min(...ys);
+    const maxY = Math.max(...ys);
+    const treeW = maxX - minX + 200;
+    const treeH = maxY - minY + 120;
+    const padding = 40;
+    const newZoom = Math.min(
+      (containerWidth - padding * 2) / treeW,
+      (containerHeight - padding * 2) / treeH,
+      1.2
+    );
+    setZoom(Math.max(newZoom, 0.2));
+    setTranslate({
+      x: containerWidth / 2 - (minX + treeW / 2) * newZoom,
+      y: padding + (-minY) * newZoom + 60,
     });
-    resizeObserver.observe(treeContainerRef.current);
-    return () => resizeObserver.disconnect();
-  }, [isExpanded]);
+  }, []);
 
+  /* ── Resize observer ─────────────────────────────────────────────── */
+  useEffect(() => {
+    const el = isFullscreen ? fullscreenRef.current : containerRef.current;
+    if (!el || !treeData) return;
+    const obs = new ResizeObserver(() => {
+      autoFit(treeData, el.clientWidth, el.clientHeight);
+    });
+    obs.observe(el);
+    autoFit(treeData, el.clientWidth, el.clientHeight);
+    return () => obs.disconnect();
+  }, [treeData, isFullscreen, autoFit]);
+
+  /* ── Build tree data ─────────────────────────────────────────────── */
   useEffect(() => {
     setIsLoading(true);
     setError(null);
-
     try {
       if (astTree && typeof astTree === "object" && astTree.name) {
-        console.log("Using provided astTree");
-        const fixedTree = fixTreeData(astTree);
-        setTreeData(fixedTree);
+        const fixed = fixTreeData(astTree);
+        const collapsed = collapseDeep(fixed, 0, 4);
+        setTreeData(collapsed);
         setIsLoading(false);
       } else if (astString && !astTree) {
-        const timeout = setTimeout(() => {
+        const t = setTimeout(() => {
           try {
-            if (!astTree || !astTree.name) {
-              console.log("Using fallback parser");
-              const defaultTree = createDefaultTree(astString);
-              setTreeData(defaultTree);
-            }
+            const def = createDefaultTree(astString);
+            setTreeData(def);
           } catch (err) {
-            console.error("Fallback parser error:", err);
             setError(`Could not parse expression: ${err.message}`);
           } finally {
             setIsLoading(false);
           }
-        }, 1000);
-
-        return () => clearTimeout(timeout);
-      } else if (
-        astTree === null ||
-        (typeof astTree === "object" && !astTree.name)
-      ) {
-        // Keep waiting
+        }, 800);
+        return () => clearTimeout(t);
       } else {
         setIsLoading(false);
       }
     } catch (err) {
-      console.error("AST processing error:", err);
       setError(`Error processing AST: ${err.message}`);
       setIsLoading(false);
     }
   }, [astTree, astString]);
 
+  /* ── Fullscreen focus trap + Escape ─────────────────────────────── */
+  useEffect(() => {
+    if (!isFullscreen) return;
+    const prev = document.activeElement;
+    document.body.style.overflow = "hidden";
+    const onKey = (e) => {
+      if (e.key === "Escape") closeFullscreen();
+    };
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      document.body.style.overflow = "";
+      if (prev) prev.focus();
+    };
+  }, [isFullscreen]);
+
+  const openFullscreen = () => {
+    triggerRef.current = document.activeElement;
+    setIsFullscreen(true);
+  };
+  const closeFullscreen = () => {
+    setIsFullscreen(false);
+    setTimeout(() => triggerRef.current?.focus(), 50);
+  };
+
+  /* ── Tree data helpers (unchanged logic from original) ──────────── */
   const fixTreeData = (tree) => {
     if (!tree) return null;
-
-    // Keywords that indicate a node type/label rather than a value
-    const labelKeywords = [
-      "IDENTIFIER",
-      "OPERATOR",
-      "LITERAL",
-      "ASSIGNMENT",
-      "SUBTRACTION",
-      "ADDITION",
-      "MULTIPLICATION",
-      "DIVISION",
-      "NUMBER",
-      "VARIABLE",
-      "EXPRESSION",
-    ];
-
+    const labelKeywords = ["IDENTIFIER","OPERATOR","LITERAL","ASSIGNMENT","SUBTRACTION","ADDITION","MULTIPLICATION","DIVISION","NUMBER","VARIABLE","EXPRESSION"];
     const isLabel = (str) => {
       if (!str || typeof str !== "string") return false;
-      const upperStr = str.toUpperCase();
-      return (
-        labelKeywords.some((keyword) => upperStr.includes(keyword)) ||
-        (str === str.toUpperCase() && str.length > 1 && /[A-Z_]/.test(str))
-      );
+      const u = str.toUpperCase();
+      return labelKeywords.some((k) => u.includes(k)) || (str === str.toUpperCase() && str.length > 1 && /[A-Z_]/.test(str));
     };
-
+    const getOperatorLabel = (op) => ({ "+": "ADDITION", "-": "SUBTRACTION", "*": "MULTIPLICATION", "/": "DIVISION", "=": "ASSIGNMENT", ":=": "ASSIGNMENT" })[op] || "OPERATOR";
     const fixNode = (node) => {
       if (!node) return node;
-
-      const newNode = { ...node };
-
-      // Fix swapped name and label
+      const n = { ...node };
       if (node.attributes?.label) {
-        // If name looks like a type/label and label looks like a value
         if (isLabel(node.name) && !isLabel(node.attributes.label)) {
-          const temp = newNode.name;
-          newNode.name = node.attributes.label;
-          newNode.attributes = {
-            ...node.attributes,
-            label: temp,
-          };
-        }
-        // Also check if both are swapped in attributes
-        else if (node.attributes.value && isLabel(node.attributes.value)) {
-          // Swap value and label in attributes
-          newNode.attributes = {
-            ...node.attributes,
-            label: node.attributes.value,
-            value: node.attributes.label,
-          };
+          n.name = node.attributes.label;
+          n.attributes = { ...node.attributes, label: node.name };
+        } else if (node.attributes.value && isLabel(node.attributes.value)) {
+          n.attributes = { ...node.attributes, label: node.attributes.value, value: node.attributes.label };
         }
       }
-
-      // Special handling for operator nodes
       if (node.name && "+-*/=:=".includes(node.name)) {
-        newNode.attributes = {
-          ...newNode.attributes,
-          type: "operator",
-          label: getOperatorLabel(node.name),
-        };
+        n.attributes = { ...n.attributes, type: "operator", label: getOperatorLabel(node.name) };
       }
-
-      // Recursively fix children
-      if (node.children && Array.isArray(node.children)) {
-        newNode.children = node.children.map((child) => fixNode(child));
-      }
-
-      return newNode;
+      if (node.children?.length) n.children = node.children.map(fixNode);
+      return n;
     };
-
-    const getOperatorLabel = (op) => {
-      const operatorLabels = {
-        "+": "ADDITION",
-        "-": "SUBTRACTION",
-        "*": "MULTIPLICATION",
-        "/": "DIVISION",
-        "=": "ASSIGNMENT",
-        ":=": "ASSIGNMENT",
-      };
-      return operatorLabels[op] || "OPERATOR";
-    };
-
     return fixNode(tree);
   };
 
   const createDefaultTree = (code) => {
-    if (!code || typeof code !== "string") {
-      throw new Error("Invalid or missing code");
-    }
-
-    // Extract the actual code if wrapped
-    let extractedCode = code;
+    if (!code) throw new Error("Invalid or missing code");
+    let expr = code;
     if (code.includes("Expression:")) {
-      const match = code.match(/Expression:\s*(.+?)(?:\n|$)/);
-      if (match) {
-        extractedCode = match[1].trim();
-      }
+      const m = code.match(/Expression:\s*(.+?)(?:\n|$)/);
+      if (m) expr = m[1].trim();
     }
-
-    if (!extractedCode) {
-      throw new Error("Empty expression");
-    }
-
-    const isAssignment =
-      extractedCode.includes(":=") ||
-      (extractedCode.includes("=") &&
-        !extractedCode.includes("==") &&
-        !extractedCode.includes("!="));
-
-    if (isAssignment) {
-      const assignOp = extractedCode.includes(":=") ? ":=" : "=";
-      const parts = extractedCode.split(assignOp);
-
-      if (parts.length < 2) {
-        throw new Error(`Invalid assignment: ${extractedCode}`);
-      }
-
-      const leftSide = parts[0].trim();
-      const rightSide = parts[1]?.trim() || "";
-
-      if (!leftSide) {
-        throw new Error("Missing left side of assignment");
-      }
-
-      // Enhanced parsing for right side expressions
-      const parseExpression = (expr) => {
-        if (!expr) {
-          return {
-            name: "empty",
-            attributes: {
-              type: "literal",
-              label: "EMPTY",
-            },
-          };
-        }
-
-        // Check for operators (order matters: check longer operators first)
-        const operators = ["-", "+", "*", "/", "%"];
-
-        for (const op of operators) {
-          // Skip if it's a negative number at the start
-          if (op === "-" && expr.startsWith("-")) {
-            continue;
-          }
-
-          // Find the operator
-          const opIndex = op === "-" ? expr.lastIndexOf(op) : expr.indexOf(op);
-          if (opIndex > 0) {
-            const leftPart = expr.substring(0, opIndex).trim();
-            const rightPart = expr.substring(opIndex + 1).trim();
-
-            if (!leftPart || !rightPart) {
-              throw new Error(`Invalid expression around operator '${op}'`);
-            }
-
-            return {
-              name: op,
-              attributes: {
-                type: "operator",
-                label: getOperatorName(op),
-              },
-              children: [parseExpression(leftPart), parseExpression(rightPart)],
-            };
+    if (!expr) throw new Error("Empty expression");
+    const isAssign = expr.includes(":=") || (expr.includes("=") && !expr.includes("==") && !expr.includes("!="));
+    if (isAssign) {
+      const op = expr.includes(":=") ? ":=" : "=";
+      const parts = expr.split(op);
+      const left = parts[0].trim();
+      const right = (parts[1] || "").trim();
+      const getOpName = (o) => ({ "+":"ADDITION","-":"SUBTRACTION","*":"MULTIPLICATION","/":"DIVISION","%":"MODULO" })[o] || "OPERATOR";
+      const parseExpr = (e) => {
+        if (!e) return { name: "empty", attributes: { type: "literal", label: "EMPTY" } };
+        for (const o of ["-", "+", "*", "/", "%"]) {
+          if (o === "-" && e.startsWith("-")) continue;
+          const idx = o === "-" ? e.lastIndexOf(o) : e.indexOf(o);
+          if (idx > 0) {
+            return { name: o, attributes: { type: "operator", label: getOpName(o) }, children: [parseExpr(e.slice(0, idx).trim()), parseExpr(e.slice(idx + 1).trim())] };
           }
         }
-
-        // It's a simple identifier or literal
-        const isNumber = /^-?\d+(\.\d+)?$/.test(expr);
-        return {
-          name: expr,
-          attributes: {
-            type: isNumber ? "literal" : "identifier",
-            label: isNumber ? "NUMBER" : "IDENTIFIER",
-          },
-        };
+        const isNum = /^-?\d+(\.\d+)?$/.test(e);
+        return { name: e, attributes: { type: isNum ? "literal" : "identifier", label: isNum ? "NUMBER" : "IDENTIFIER" } };
       };
-
-      const getOperatorName = (op) => {
-        const names = {
-          "+": "ADDITION",
-          "-": "SUBTRACTION",
-          "*": "MULTIPLICATION",
-          "/": "DIVISION",
-          "%": "MODULO",
-        };
-        return names[op] || "OPERATOR";
-      };
-
-      return {
-        name: assignOp,
-        attributes: { type: "operator", label: "ASSIGNMENT" },
-        children: [
-          {
-            name: leftSide,
-            attributes: { type: "identifier", label: "IDENTIFIER" },
-          },
-          parseExpression(rightSide),
-        ],
-      };
+      return { name: op, attributes: { type: "operator", label: "ASSIGNMENT" }, children: [{ name: left, attributes: { type: "identifier", label: "IDENTIFIER" } }, parseExpr(right)] };
     }
-
-    // Non-assignment expressions
-    return {
-      name: extractedCode,
-      attributes: { type: "default", label: "EXPRESSION" },
-      children: [],
-    };
+    return { name: expr, attributes: { type: "default", label: "EXPRESSION" }, children: [] };
   };
 
-  const copyToClipboard = () => {
-    if (astString) {
-      navigator.clipboard.writeText(astString);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    }
-  };
-
-  const handleZoomIn = () => setZoom((prev) => Math.min(prev + 0.2, 3));
-  const handleZoomOut = () => setZoom((prev) => Math.max(prev - 0.2, 0.5));
-
+  /* ── Custom SVG node ─────────────────────────────────────────────── */
   const renderCustomNode = ({ nodeDatum }) => {
-    const nodeType = nodeDatum.attributes?.type || "default";
-    const nodeLabel = nodeDatum.attributes?.label || "";
-
-    const colorMap = {
-      operator: ["#2563eb", "#dbeafe", "#1e40af"],
-      literal: ["#16a34a", "#dcfce7", "#15803d"],
-      identifier: ["#9333ea", "#f3e8ff", "#7c3aed"],
-      function: ["#ca8a04", "#fef9c3", "#a16207"],
-      default: ["#475569", "#f8fafc", "#334155"],
-    };
-
-    const [primaryColor, lightColor, darkColor] =
-      colorMap[nodeType] || colorMap.default;
+    const type = nodeDatum.attributes?.type || "default";
+    const lbl = nodeDatum.attributes?.label || "";
+    const c = NODE_COLORS[type] || NODE_COLORS.default;
+    const isCollapsed = nodeDatum._collapsed;
+    const collapsedCount = nodeDatum._collapsedCount || 0;
+    const nameText = truncate(nodeDatum.name, MAX_LABEL_CHARS);
+    const fullName = nodeDatum.name;
+    const nodeW = 160;
+    const nodeH = 44;
 
     return (
       <g>
-        {/* Main node rectangle */}
+        <title>{fullName}</title>
         <rect
-          x="-70"
-          y="-25"
-          width="140"
-          height="50"
+          x={-nodeW / 2}
+          y={-nodeH / 2}
+          width={nodeW}
+          height={nodeH}
           rx="8"
-          fill={lightColor}
-          stroke={primaryColor}
-          strokeWidth="2"
-          style={{
-            filter: "drop-shadow(0 2px 4px rgba(0, 0, 0, 0.1))",
-            transition: "all 0.3s ease",
-          }}
+          fill={c.fill}
+          stroke={c.stroke}
+          strokeWidth="1"
+          style={{ filter: "drop-shadow(0 2px 8px rgba(0,0,0,0.5))" }}
         />
-
-        {/* Node value/name */}
         <text
           x="0"
-          y="3"
+          y={showLabels && lbl ? 4 : 2}
           textAnchor="middle"
-          fill={darkColor}
+          fill={c.label}
           style={{
-            fontSize: "20px",
-            fontFamily: "'Inter', 'Segoe UI', system-ui, sans-serif",
-            fontWeight: "400",
+            fontSize: "13px",
+            fontFamily: "'JetBrains Mono', 'Fira Code', monospace",
+            fontWeight: "500",
             dominantBaseline: "middle",
           }}
         >
-          {nodeDatum.name}
+          {nameText}
         </text>
-
-        {/* Label badge */}
-        {showLabels && nodeLabel && (
+        {showLabels && lbl && (
           <g>
             <rect
-              x={-nodeLabel.length * 4 - 10}
-              y="-50"
-              width={nodeLabel.length * 8 + 20}
-              height="22"
-              rx="11"
-              fill={primaryColor}
-              style={{
-                filter: "drop-shadow(0 1px 2px rgba(0, 0, 0, 0.1))",
-              }}
+              x={-(lbl.length * 4.5 + 12) / 2}
+              y={-nodeH / 2 - 20}
+              width={lbl.length * 4.5 + 12}
+              height={16}
+              rx="8"
+              fill={c.badge}
+              stroke={c.stroke}
+              strokeWidth="0.5"
             />
             <text
               x="0"
-              y="-39"
+              y={-nodeH / 2 - 12}
               textAnchor="middle"
-              fill="white"
+              fill={c.label}
               style={{
-                fontSize: "12px",
-                fontFamily: "'Inter', 'Segoe UI', system-ui, sans-serif",
-                fontWeight: "300",
+                fontSize: "9px",
+                fontFamily: "'JetBrains Mono', monospace",
+                fontWeight: "500",
                 dominantBaseline: "middle",
                 letterSpacing: "0.06em",
               }}
             >
-              {nodeLabel}
+              {lbl}
+            </text>
+          </g>
+        )}
+        {isCollapsed && (
+          <g>
+            <rect x={-20} y={nodeH / 2 - 2} width={40} height={18} rx="9"
+              fill="rgba(99,102,241,0.2)" stroke="rgba(99,102,241,0.4)" strokeWidth="1" />
+            <text x="0" y={nodeH / 2 + 9} textAnchor="middle"
+              fill="#a5b4fc"
+              style={{ fontSize: "10px", fontFamily: "'JetBrains Mono',monospace", dominantBaseline: "middle" }}>
+              +{collapsedCount}
             </text>
           </g>
         )}
@@ -382,308 +325,424 @@ const ASTVisualization = ({ astString, astTree }) => {
     );
   };
 
+  /* ── Text view ───────────────────────────────────────────────────── */
   const renderTextAST = () => {
-    // Extract code from astString
     let code = "";
     if (astString) {
-      if (astString.includes("Expression:")) {
-        const match = astString.match(/Expression:\s*(.+?)(?:\n|$)/);
-        if (match) {
-          code = match[1].trim();
+      const m = astString.match(/Expression:\s*(.+?)(?:\n|$)/);
+      code = m ? m[1].trim() : astString.trim();
+    }
+    if (!code) code = "No expression available";
+    const assignOp = code.includes(":=") ? ":=" : code.includes("=") ? "=" : "";
+    const parts = assignOp ? code.split(assignOp) : [];
+    const left = parts[0]?.trim() || "";
+    const right = parts[1]?.trim() || "";
+    const opNames = { "+":"Addition","-":"Subtraction","*":"Multiplication","/":"Division","%":"Modulo" };
+    const renderExprTree = (expr) => {
+      for (const o of ["-","+","*","/","%"]) {
+        const idx = o === "-" ? expr.lastIndexOf("-") : expr.indexOf(o);
+        if (idx > 0) {
+          const lp = expr.slice(0, idx).trim();
+          const rp = expr.slice(idx + 1).trim();
+          return (
+            <div>
+              <div className="flex items-center gap-2">
+                <span style={{ color: "var(--text-muted)" }}>└─</span>
+                <span className="font-code" style={{ color: "#6366F1" }}>{o}</span>
+                <span className="text-xs" style={{ color: "var(--text-muted)" }}>({opNames[o]})</span>
+              </div>
+              <div className="pl-6 space-y-1 mt-1">
+                {[lp, rp].map((part, i) => (
+                  <div key={i} className="flex items-center gap-2">
+                    <span style={{ color: "var(--text-muted)" }}>{i === 0 ? "├─" : "└─"}</span>
+                    <span className="font-code" style={{ color: /^\d+$/.test(part) ? "#10b981" : "#a5b4fc" }}>{part}</span>
+                    <span className="text-xs" style={{ color: "var(--text-muted)" }}>({/^\d+$/.test(part) ? "Number" : "Variable"})</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          );
         }
-      } else {
-        code = astString.trim();
       }
-    }
-
-    if (!code) {
-      code = error ? "Invalid expression" : "a = a - 10";
-    }
-
-    const assignOperator = code.includes(":=")
-      ? ":="
-      : code.includes("=")
-      ? "="
-      : "";
-    const parts = assignOperator ? code.split(assignOperator) : [];
-    const leftSide = parts[0]?.trim() || "";
-    const rightSide = parts[1]?.trim() || "";
+      return (
+        <div className="flex items-center gap-2">
+          <span className="font-code" style={{ color: "#a5b4fc" }}>{expr}</span>
+          <span className="text-xs" style={{ color: "var(--text-muted)" }}>({/^\d+$/.test(expr) ? "Number" : "Variable"})</span>
+        </div>
+      );
+    };
 
     return (
-      <div className="h-full overflow-auto p-4 bg-gray-50">
-        <div className="max-w-2xl mx-auto">
-          <div className="bg-white rounded-lg p-5 shadow-sm border border-gray-200">
-            <h3 className="text-lg font-semibold text-gray-700 mb-4">
-              Abstract Syntax Tree Analysis
-            </h3>
-
-            <div className="mb-4">
-              <h4 className="text-sm font-medium text-gray-600 mb-1">
-                Expression:
-              </h4>
-              <p className="bg-blue-50 p-3 rounded border border-blue-200 font-mono text-sm">
-                {code}
-              </p>
-            </div>
-
-            {error ? (
-              <div className="bg-red-50 border border-red-200 rounded-md p-4 my-4">
-                <div className="flex">
-                  <div className="flex-shrink-0">
-                    <FiAlertTriangle className="h-5 w-5 text-red-400" />
-                  </div>
-                  <div className="ml-3">
-                    <h3 className="text-sm font-medium text-red-800">
-                      Error parsing expression
-                    </h3>
-                    <div className="mt-2 text-sm text-red-700">
-                      <p>{error}</p>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            ) : (
-              <div className="space-y-4">
-                <div>
-                  <h4 className="font-semibold text-gray-700 mb-2">
-                    Tree Structure:
-                  </h4>
-
-                  {assignOperator ? (
-                    <div className="pl-4 space-y-2">
-                      <div className="flex items-center gap-2">
-                        <span className="text-blue-600 font-bold">
-                          {assignOperator}
-                        </span>
-                        <span className="text-gray-600">(Assignment)</span>
-                      </div>
-
-                      <div className="pl-4 space-y-2">
-                        <div className="flex items-center gap-2">
-                          <span className="text-gray-500">├─</span>
-                          <span className="text-purple-600 font-semibold">
-                            {leftSide}
-                          </span>
-                          <span className="text-gray-500 text-sm">
-                            (Variable)
-                          </span>
-                        </div>
-
-                        {renderExpressionTree(rightSide)}
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="pl-4 text-gray-600">
-                      Simple expression (no assignment operator)
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
+      <div className="h-full overflow-auto p-4">
+        <div
+          className="rounded-xl p-5 max-w-2xl mx-auto"
+          style={{ backgroundColor: "var(--bg-raised)", border: "1px solid var(--border)" }}
+        >
+          <h3 className="font-semibold mb-4 text-sm" style={{ color: "var(--text-secondary)" }}>
+            Abstract Syntax Tree — Text View
+          </h3>
+          <div className="mb-4">
+            <p className="text-xs mb-1" style={{ color: "var(--text-muted)" }}>Expression:</p>
+            <p className="font-code text-sm px-3 py-2 rounded-lg" style={{ background: "rgba(99,102,241,0.08)", color: "var(--text-primary)" }}>{code}</p>
           </div>
+          {error ? (
+            <div className="flex gap-2 text-sm" style={{ color: "rgba(252,165,165,0.9)" }}>
+              <FiAlertTriangle className="w-4 h-4 flex-shrink-0 mt-0.5" />
+              {error}
+            </div>
+          ) : assignOp ? (
+            <div className="space-y-2 font-code text-sm">
+              <div className="flex items-center gap-2">
+                <span className="font-code" style={{ color: "#6366F1" }}>{assignOp}</span>
+                <span className="text-xs" style={{ color: "var(--text-muted)" }}>(Assignment)</span>
+              </div>
+              <div className="pl-5 space-y-1">
+                <div className="flex items-center gap-2">
+                  <span style={{ color: "var(--text-muted)" }}>├─</span>
+                  <span className="font-code" style={{ color: "#a5b4fc" }}>{left}</span>
+                  <span className="text-xs" style={{ color: "var(--text-muted)" }}>(Variable)</span>
+                </div>
+                {renderExprTree(right)}
+              </div>
+            </div>
+          ) : (
+            <p className="text-sm" style={{ color: "var(--text-secondary)" }}>Simple expression (no assignment)</p>
+          )}
         </div>
       </div>
     );
   };
 
-  const renderExpressionTree = (expr, isRoot = false) => {
-    if (!expr) return null;
-
-    // Check for operators
-    const operators = ["-", "+", "*", "/", "%"];
-
-    for (const op of operators) {
-      const opIndex = op === "-" ? expr.lastIndexOf("-") : expr.indexOf(op);
-      if (opIndex > 0) {
-        const leftPart = expr.substring(0, opIndex).trim();
-        const rightPart = expr.substring(opIndex + 1).trim();
-
-        const opNames = {
-          "+": "Addition",
-          "-": "Subtraction",
-          "*": "Multiplication",
-          "/": "Division",
-          "%": "Modulo",
-        };
-
-        return (
-          <div>
-            <div className="flex items-center gap-2">
-              <span className="text-gray-500">└─</span>
-              <span className="text-red-600 font-bold">{op}</span>
-              <span className="text-gray-600">({opNames[op]})</span>
-            </div>
-            <div className="pl-8 space-y-2 mt-2">
-              <div className="flex items-center gap-2">
-                <span className="text-gray-500">├─</span>
-                <span className="text-purple-600 font-semibold">
-                  {leftPart}
-                </span>
-                <span className="text-gray-500 text-sm">
-                  {/^\d+$/.test(leftPart) ? "(Number)" : "(Variable)"}
-                </span>
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="text-gray-500">└─</span>
-                <span className="text-purple-600 font-semibold">
-                  {rightPart}
-                </span>
-                <span className="text-gray-500 text-sm">
-                  {/^\d+$/.test(rightPart) ? "(Number)" : "(Variable)"}
-                </span>
-              </div>
-            </div>
-          </div>
-        );
-      }
-    }
-
-    // Simple expression
-    return (
-      <div className="flex items-center gap-2">
-        <span className="text-gray-500">{isRoot ? "" : "└─"}</span>
-        <span className="text-purple-600 font-semibold">{expr}</span>
-        <span className="text-gray-500 text-sm">
-          {/^\d+$/.test(expr) ? "(Number)" : "(Variable)"}
-        </span>
+  /* ── Toolbar ─────────────────────────────────────────────────────── */
+  const Toolbar = ({ inModal = false }) => (
+    <div className="flex flex-wrap gap-2 items-center justify-between">
+      <div className="flex gap-2">
+        {[
+          { mode: "text", label: "Text View", icon: <FiCode className="w-3 h-3" /> },
+          { mode: "visual", label: "Visual Tree", icon: <FiBookOpen className="w-3 h-3" /> },
+        ].map(({ mode, label, icon }) => (
+          <button
+            key={mode}
+            onClick={() => setViewMode(mode)}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all cursor-pointer"
+            style={{
+              background: viewMode === mode ? "rgba(99,102,241,0.2)" : "rgba(255,255,255,0.04)",
+              border: viewMode === mode ? "1px solid rgba(99,102,241,0.4)" : "1px solid var(--border)",
+              color: viewMode === mode ? "#a5b4fc" : "var(--text-secondary)",
+            }}
+          >
+            {icon}{label}
+          </button>
+        ))}
+        <button
+          onClick={() => setShowLabels(!showLabels)}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all cursor-pointer"
+          style={{
+            background: showLabels ? "rgba(16,185,129,0.1)" : "rgba(255,255,255,0.04)",
+            border: showLabels ? "1px solid rgba(16,185,129,0.3)" : "1px solid var(--border)",
+            color: showLabels ? "#6ee7b7" : "var(--text-secondary)",
+          }}
+        >
+          {showLabels ? "Hide Labels" : "Show Labels"}
+        </button>
       </div>
-    );
-  };
 
-  const renderErrorView = () => (
-    <div className="h-full flex flex-col items-center justify-center text-slate-700 p-6">
-      <FiAlertTriangle className="w-12 h-12 text-amber-500 mb-4" />
-      <h3 className="text-lg font-medium mb-2">Expression Parsing Error</h3>
-      <p className="text-center text-slate-600 mb-4 max-w-md">
-        {error || "Could not parse the expression properly."}
-      </p>
-      <div className="bg-slate-100 p-3 rounded-md text-sm font-mono w-full max-w-md overflow-auto">
-        {astString || "No expression provided"}
+      <div className="flex gap-2">
+        {viewMode === "visual" && (
+          <>
+            <button
+              onClick={() => setZoom((z) => Math.max(z - 0.15, 0.15))}
+              className="p-1.5 rounded-lg text-xs cursor-pointer transition-all"
+              style={{ background: "rgba(255,255,255,0.04)", border: "1px solid var(--border)", color: "var(--text-secondary)" }}
+              title="Zoom out"
+            >
+              <FiZoomOut className="w-3.5 h-3.5" />
+            </button>
+            <button
+              onClick={() => setZoom((z) => Math.min(z + 0.15, 2.5))}
+              className="p-1.5 rounded-lg text-xs cursor-pointer transition-all"
+              style={{ background: "rgba(255,255,255,0.04)", border: "1px solid var(--border)", color: "var(--text-secondary)" }}
+              title="Zoom in"
+            >
+              <FiZoomIn className="w-3.5 h-3.5" />
+            </button>
+            {inModal && (
+              <button
+                onClick={() => treeData && containerRef.current && autoFit(treeData, containerRef.current.clientWidth, containerRef.current.clientHeight)}
+                className="px-3 py-1.5 rounded-lg text-xs font-medium cursor-pointer transition-all"
+                style={{ background: "rgba(99,102,241,0.1)", border: "1px solid rgba(99,102,241,0.25)", color: "#a5b4fc" }}
+              >
+                Fit
+              </button>
+            )}
+          </>
+        )}
+        <button
+          onClick={() => astString && navigator.clipboard.writeText(astString).then(() => { setCopied(true); setTimeout(() => setCopied(false), 2000); })}
+          className="p-1.5 rounded-lg text-xs cursor-pointer transition-all"
+          style={{ background: "rgba(255,255,255,0.04)", border: "1px solid var(--border)", color: "var(--text-secondary)" }}
+          title="Copy AST"
+        >
+          <FiCopy className="w-3.5 h-3.5" />
+        </button>
+        {!inModal && (
+          <button
+            ref={triggerRef}
+            onClick={openFullscreen}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold cursor-pointer transition-all"
+            style={{
+              background: "linear-gradient(135deg,rgba(99,102,241,0.2),rgba(168,85,247,0.2))",
+              border: "1px solid rgba(99,102,241,0.35)",
+              color: "#a5b4fc",
+            }}
+            title="Open fullscreen"
+          >
+            <FiMaximize className="w-3.5 h-3.5" />
+            Open Fullscreen
+          </button>
+        )}
+        {inModal && (
+          <button
+            onClick={closeFullscreen}
+            className="p-1.5 rounded-lg cursor-pointer transition-all"
+            style={{ background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.2)", color: "rgba(252,165,165,0.9)" }}
+            aria-label="Close fullscreen"
+          >
+            <FiX className="w-4 h-4" />
+          </button>
+        )}
       </div>
-      <p className="mt-4 text-sm text-slate-500">
-        Try checking for syntax errors in your expression.
-      </p>
+    </div>
+  );
+
+  /* ── Tree canvas shared by inline + modal ────────────────────────── */
+  const TreeCanvas = ({ containerClass = "", heightStyle = {} }) => (
+    <div
+      ref={containerRef}
+      className={`relative rounded-xl overflow-hidden ${containerClass}`}
+      style={{
+        backgroundColor: "#080A10",
+        border: "1px solid var(--border)",
+        ...heightStyle,
+      }}
+    >
+      {error && viewMode === "visual" ? (
+        <div className="h-full flex flex-col items-center justify-center gap-4 p-6">
+          <FiAlertTriangle className="w-10 h-10" style={{ color: "#fbbf24" }} />
+          <p className="text-sm text-center max-w-sm" style={{ color: "var(--text-secondary)" }}>{error}</p>
+        </div>
+      ) : viewMode === "text" ? (
+        renderTextAST()
+      ) : treeData ? (
+        <Tree
+          ref={treeRef}
+          data={treeData}
+          orientation="vertical"
+          renderCustomNodeElement={renderCustomNode}
+          translate={translate}
+          zoom={zoom}
+          onUpdate={({ zoom: z, translate: t }) => { setZoom(z); setTranslate(t); }}
+          pathFunc="step"
+          pathClassFunc={() => "ast-link"}
+          separation={{ siblings: 1.3, nonSiblings: 1.8 }}
+          zoomable
+          draggable
+          collapsible={false}
+          nodeSize={{ x: 200, y: 120 }}
+          svgClassName="ast-svg"
+        />
+      ) : (
+        <div className="h-full flex flex-col items-center justify-center gap-3">
+          <FiAlertTriangle className="w-8 h-8" style={{ color: "var(--text-muted)" }} />
+          <p className="text-sm" style={{ color: "var(--text-muted)" }}>No AST data available</p>
+        </div>
+      )}
+
+      {/* SVG link color override */}
+      <style>{`
+        .ast-svg .rd3t-link { stroke: rgba(255,255,255,0.12) !important; stroke-width: 1 !important; }
+      `}</style>
     </div>
   );
 
   if (isLoading) {
     return (
-      <div className="h-full flex flex-col items-center justify-center text-slate-500">
-        <FiLoader className="w-8 h-8 animate-spin mb-3" />
-        <p className="text-sm font-medium">Generating AST...</p>
+      <div className="flex flex-col items-center justify-center py-16 gap-3" style={{ color: "var(--text-muted)" }}>
+        <FiLoader className="w-7 h-7 animate-spin" />
+        <p className="text-sm">Generating AST…</p>
       </div>
     );
   }
 
   return (
     <div className="relative">
-      <div className="flex flex-wrap gap-2 mb-4 justify-between items-center">
-        <div className="flex gap-2">
-          <button
-            onClick={() => setViewMode("text")}
-            className={`px-3 py-1 text-xs rounded transition-colors ${
-              viewMode === "text"
-                ? "bg-blue-100 text-blue-800 border border-blue-300"
-                : "bg-slate-100 text-slate-700 hover:bg-slate-200"
-            }`}
-          >
-            <FiCode className="inline mr-1" /> Text View
-          </button>
-          <button
-            onClick={() => setViewMode("visual")}
-            className={`px-3 py-1 text-xs rounded transition-colors ${
-              viewMode === "visual"
-                ? "bg-blue-100 text-blue-800 border border-blue-300"
-                : "bg-slate-100 text-slate-700 hover:bg-slate-200"
-            }`}
-          >
-            <FiBookOpen className="inline mr-1" /> Visual Tree
-          </button>
-          <button
-            onClick={() => setShowLabels(!showLabels)}
-            className={`px-3 py-1 text-xs rounded transition-colors ${
-              showLabels
-                ? "bg-green-100 text-green-800 border border-green-300"
-                : "bg-slate-100 text-slate-700 hover:bg-slate-200"
-            }`}
-          >
-            {showLabels ? "Hide Labels" : "Show Labels"}
-          </button>
-        </div>
-        <div className="flex gap-2">
-          {viewMode === "visual" && (
-            <>
-              <button
-                onClick={handleZoomIn}
-                className="px-2 py-1 text-xs bg-slate-100 hover:bg-slate-200 rounded"
-              >
-                <FiZoomIn className="w-3 h-3" />
-              </button>
-              <button
-                onClick={handleZoomOut}
-                className="px-2 py-1 text-xs bg-slate-100 hover:bg-slate-200 rounded"
-              >
-                <FiZoomOut className="w-3 h-3" />
-              </button>
-            </>
-          )}
-          <button
-            onClick={copyToClipboard}
-            className="px-3 py-1 text-xs bg-slate-100 hover:bg-slate-200 rounded"
-          >
-            <FiCopy className="w-3 h-3 inline mr-1" /> Copy
-          </button>
-          <button
-            onClick={() => setIsExpanded(!isExpanded)}
-            className="px-3 py-1 text-xs bg-slate-100 hover:bg-slate-200 rounded"
-          >
-            {isExpanded ? (
-              <FiMinimize className="w-3 h-3 inline mr-1" />
-            ) : (
-              <FiMaximize className="w-3 h-3 inline mr-1" />
-            )}
-            {isExpanded ? "Collapse" : "Expand"}
-          </button>
-        </div>
+      {/* ── Inline view ─────────────────────────────────────────────── */}
+      <div className="space-y-3">
+        <Toolbar />
+        <TreeCanvas heightStyle={{ height: "70vh", minHeight: 500 }} />
       </div>
 
-      <div
-        ref={treeContainerRef}
-        className={`bg-white rounded-lg border border-slate-200 overflow-hidden ${
-          isExpanded ? "h-[500px]" : "h-[300px]"
-        }`}
-      >
-        {error && viewMode === "visual" ? (
-          renderErrorView()
-        ) : viewMode === "text" ? (
-          renderTextAST()
-        ) : treeData ? (
-          <Tree
-            data={treeData}
-            orientation="vertical"
-            renderCustomNodeElement={renderCustomNode}
-            translate={{ x: dimensions.width / 2, y: 80 }}
-            zoom={zoom}
-            pathFunc="step"
-            separation={{ siblings: 2, nonSiblings: 2.5 }}
-            zoomable
-            draggable
-            collapsible={false}
-            nodeSize={{ x: 160, y: 100 }}
-          />
-        ) : (
-          <div className="text-center text-slate-500 py-8">
-            <FiAlertTriangle className="w-8 h-8 mx-auto mb-2 text-slate-400" />
-            <p>No AST data available</p>
+      {/* ── Fullscreen modal ─────────────────────────────────────────── */}
+      {isFullscreen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          style={{ background: "rgba(0,0,0,0.85)", backdropFilter: "blur(6px)" }}
+          onClick={(e) => { if (e.target === e.currentTarget) closeFullscreen(); }}
+          role="dialog"
+          aria-modal="true"
+          aria-label="Syntax Analysis AST fullscreen"
+        >
+          <div
+            ref={fullscreenRef}
+            className="flex flex-col rounded-2xl overflow-hidden"
+            style={{
+              width: "95vw",
+              height: "95vh",
+              backgroundColor: "var(--bg-elevated)",
+              border: "1px solid var(--border-mid)",
+              boxShadow: "0 24px 80px rgba(0,0,0,0.7)",
+            }}
+          >
+            {/* Modal header */}
+            <div
+              className="flex items-center justify-between px-5 py-4 flex-shrink-0"
+              style={{ borderBottom: "1px solid var(--border)" }}
+            >
+              <h2 className="font-semibold text-sm tracking-tight" style={{ color: "var(--text-primary)" }}>
+                Syntax Analysis — AST
+              </h2>
+              <Toolbar inModal />
+            </div>
+
+            {/* Modal tree */}
+            <div className="flex-1 relative overflow-hidden" ref={containerRef}>
+              {error && viewMode === "visual" ? (
+                <div className="h-full flex flex-col items-center justify-center gap-4 p-6">
+                  <FiAlertTriangle className="w-10 h-10" style={{ color: "#fbbf24" }} />
+                  <p className="text-sm" style={{ color: "var(--text-secondary)" }}>{error}</p>
+                </div>
+              ) : viewMode === "text" ? (
+                renderTextAST()
+              ) : treeData ? (
+                <>
+                  <Tree
+                    data={treeData}
+                    orientation="vertical"
+                    renderCustomNodeElement={renderCustomNode}
+                    translate={translate}
+                    zoom={zoom}
+                    onUpdate={({ zoom: z, translate: t }) => { setZoom(z); setTranslate(t); }}
+                    pathFunc="step"
+                    separation={{ siblings: 1.3, nonSiblings: 1.8 }}
+                    zoomable
+                    draggable
+                    collapsible={false}
+                    nodeSize={{ x: 200, y: 120 }}
+                    svgClassName="ast-svg"
+                  />
+                  <style>{`
+                    .ast-svg .rd3t-link { stroke: rgba(255,255,255,0.12) !important; stroke-width: 1 !important; }
+                  `}</style>
+
+                  {/* Mini-map */}
+                  <MiniMap treeData={treeData} zoom={zoom} translate={translate} />
+                </>
+              ) : (
+                <div className="h-full flex items-center justify-center" style={{ color: "var(--text-muted)" }}>
+                  No AST data
+                </div>
+              )}
+            </div>
           </div>
-        )}
-      </div>
-
-      {copied && (
-        <div className="fixed bottom-4 right-4 bg-green-500 text-white px-3 py-2 rounded-lg shadow-lg animate-fadeInOut text-sm z-50">
-          ✓ AST copied to clipboard!
         </div>
       )}
+
+      {/* Copied toast */}
+      {copied && (
+        <div className="fixed bottom-6 right-6 z-50 text-sm px-4 py-2.5 rounded-xl shadow-xl animate-fadeInOut"
+          style={{ background: "rgba(16,185,129,0.15)", border: "1px solid rgba(16,185,129,0.3)", color: "#6ee7b7" }}>
+          ✓ AST copied
+        </div>
+      )}
+    </div>
+  );
+};
+
+/* ─── Minimap ─────────────────────────────────────────────────────── */
+const MiniMap = ({ treeData, zoom, translate }) => {
+  const canvasRef = useRef(null);
+
+  useEffect(() => {
+    if (!canvasRef.current || !treeData) return;
+    const canvas = canvasRef.current;
+    const ctx = canvas.getContext("2d");
+    const W = canvas.width;
+    const H = canvas.height;
+    ctx.clearRect(0, 0, W, H);
+
+    // Collect all node positions (rough tree layout)
+    const nodes = collectNodes(treeData);
+    if (!nodes.length) return;
+    const xs = nodes.map((n) => n.x);
+    const ys = nodes.map((n) => n.y);
+    const minX = Math.min(...xs), maxX = Math.max(...xs);
+    const minY = Math.min(...ys), maxY = Math.max(...ys);
+    const tW = maxX - minX + 200;
+    const tH = maxY - minY + 120;
+
+    const scale = Math.min((W - 16) / tW, (H - 16) / tH);
+    const offX = 8 - minX * scale + ((W - 16) - tW * scale) / 2;
+    const offY = 8 - minY * scale + ((H - 16) - tH * scale) / 2;
+
+    // Draw nodes
+    ctx.fillStyle = "rgba(99,102,241,0.5)";
+    nodes.forEach(({ x, y }) => {
+      ctx.beginPath();
+      ctx.arc(x * scale + offX, y * scale + offY, 2.5, 0, Math.PI * 2);
+      ctx.fill();
+    });
+
+    // Draw edges (very rough — just parent-child lines)
+    ctx.strokeStyle = "rgba(255,255,255,0.1)";
+    ctx.lineWidth = 0.8;
+    const drawEdges = (node, px, py) => {
+      if (!node?.children?.length) return;
+      const total = node.children.length;
+      const startX = px - ((total - 1) * 200 * 1.3) / 2;
+      node.children.forEach((child, i) => {
+        const cx = startX + i * 200 * 1.3;
+        const cy = py + 120;
+        ctx.beginPath();
+        ctx.moveTo(px * scale + offX, py * scale + offY);
+        ctx.lineTo(cx * scale + offX, cy * scale + offY);
+        ctx.stroke();
+        drawEdges(child, cx, cy);
+      });
+    };
+    drawEdges(treeData, 0, 0);
+
+    // Viewport rectangle
+    const vpX = (-translate.x / zoom) * scale + offX;
+    const vpY = (-translate.y / zoom) * scale + offY;
+    const vpW = (window.innerWidth * 0.95 / zoom) * scale;
+    const vpH = (window.innerHeight * 0.85 / zoom) * scale;
+    ctx.strokeStyle = "rgba(99,102,241,0.6)";
+    ctx.lineWidth = 1.5;
+    ctx.strokeRect(vpX, vpY, vpW, vpH);
+  }, [treeData, zoom, translate]);
+
+  return (
+    <div
+      className="absolute bottom-4 left-4 rounded-xl overflow-hidden"
+      style={{
+        width: 180,
+        height: 120,
+        background: "rgba(8,9,12,0.85)",
+        border: "1px solid var(--border-mid)",
+        backdropFilter: "blur(4px)",
+      }}
+    >
+      <canvas ref={canvasRef} width={180} height={120} />
     </div>
   );
 };

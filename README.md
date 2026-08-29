@@ -198,5 +198,4 @@ key, a rate limit, or a model name that no longer exists.
 
 ## License
 
-See `LICENSE`. Original project by
-[danielace1](https://github.com/danielace1/compiler-visualizer).
+See `LICENSE`.
